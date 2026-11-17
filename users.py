@@ -21,9 +21,13 @@ import crypto_store
 ADMIN_ID = "admin"
 ADMIN_EMAIL = "admin@local"
 
-# Default per-user limits (Sophie's call): 3 accounts, 10 posts/day,
-# 20 replies/day per user, counted across ALL of that user's accounts.
-DEFAULT_LIMITS = {"max_accounts": 3, "max_posts_per_day": 10, "max_replies_per_day": 20}
+# Default per-user limits (keputusan Sophie 17 Nov 2026): user biasa
+# TANPA BATAS — None berarti unlimited di semua enforcement (cek maks
+# akun + cek jatah harian). Alasannya: tiap user bawa proxy sendiri per
+# akun, jadi beban IP server tidak lagi jadi alasan pembatasan.
+# Struktur limit per-user tetap dipertahankan (untuk paket berbayar
+# nanti); admin tetap pakai ADMIN_LIMITS di bawah.
+DEFAULT_LIMITS = {"max_accounts": None, "max_posts_per_day": None, "max_replies_per_day": None}
 # Admin (gate) limits: generous caps so cron flows never trip them, but
 # still finite so the same enforcement code path runs for everyone.
 ADMIN_LIMITS = {"max_accounts": 100, "max_posts_per_day": 1000, "max_replies_per_day": 1000}

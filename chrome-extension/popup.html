@@ -26,7 +26,12 @@
   <div class="row"><span class="label">Sessionid:</span> <span id="sid">—</span></div>
   <button id="syncBtn">Sync Sekarang</button>
   <div style="margin-top:12px">
-    <span class="label" style="font-size:12px">Password gate aplikasi Threads</span>
+    <span class="label" style="font-size:12px">API key (pengguna — dari panel Akun Saya di dashboard)</span>
+    <input id="apiKey" type="password" placeholder="tk_…" autocomplete="off">
+    <div class="note">Isi ini supaya sessionid masuk ke akun milikmu. Kosongkan bila kamu admin (pakai password gate di bawah).</div>
+  </div>
+  <div style="margin-top:12px">
+    <span class="label" style="font-size:12px">Password gate aplikasi Threads (khusus admin)</span>
     <input id="gatePass" type="password" placeholder="password gate" autocomplete="off">
   </div>
   <p id="hint" class="note" style="display:none;color:#c00">Extension ini membaca sessionid dari Threads (threads.net). Kalau belum login di sana, <a href="https://www.threads.net/" target="_blank">buka threads.net</a> dan login dulu, lalu klik Sync Sekarang.</p>

@@ -334,6 +334,16 @@
           <button class="btn secondary" onclick="logout()">Keluar</button>
         </div>
       </div>
+      <div class="panel" id="musePanel">
+        <h2>Otomasi dengan Muse</h2>
+        <div class="muted">Salin prompt di bawah, tempel ke Muse kamu sendiri — Muse kamu akan memakai API key kamu untuk posting, komen, dan balas otomatis seperti cron. Prompt ini tidak berisi key kamu sampai kamu mengisinya di bawah (server tidak menyimpan key lengkap).</div>
+        <label>API key kamu (opsional — supaya prompt terisi otomatis)</label>
+        <input type="password" id="museApiKey" placeholder="tk_…" autocomplete="off">
+        <div style="margin-top:8px"><button class="btn btn-sm" onclick="loadMusePrompt()">Tampilkan Prompt</button> <button class="btn secondary btn-sm" onclick="copyMusePrompt()">Salin Prompt</button> <button class="btn secondary btn-sm" onclick="window.location.href='/api/extension.zip'">Download Extension</button></div>
+        <div class="muted small" style="margin-top:6px">Akun tanpa proxy jalan lewat IP server — risikonya ditanggung akun itu sendiri. Isi proxy sendiri per akun (panel Tambah Akun / daftar akun di bawah) supaya tiap akun punya IP sendiri.</div>
+        <pre id="musePrompt" style="white-space:pre-wrap;word-break:break-word;background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:12px;font-size:13px;max-height:320px;overflow:auto;margin-top:10px">Memuat...</pre>
+        <div id="musePromptMsg" class="muted small" style="margin-top:6px"></div>
+      </div>
       <div class="panel">
         <h2>Tambah Akun</h2>
         <div class="muted">Login pakai akun Instagram (Threads nempel ke IG). Password hanya dipakai sekali saat login — yang disimpan hanya token sesi, terenkripsi. Kunci 2FA juga hanya dipakai sekali saat login ini, tidak disimpan. Proxy (kalau diisi) disimpan terenkripsi dan dipakai buat semua aktivitas akun ini — supaya trafiknya keluar lewat IP proxy, bukan IP server.</div>
@@ -546,14 +556,11 @@ async function fetchJsonNoRedirect(path, opts){
 }
 function limitsText(limits){
   if (!limits) return '';
-  const parts = [];
-  if (limits.max_accounts != null) parts.push('maks ' + limits.max_accounts + ' akun Threads');
-  if (limits.max_posts_per_day != null) parts.push(limits.max_posts_per_day + ' post/hari');
-  if (limits.max_replies_per_day != null) parts.push(limits.max_replies_per_day + ' balasan/hari');
-  if (!parts.length) {
-    Object.keys(limits).forEach(k=>parts.push(k + ': ' + limits[k]));
-  }
-  return parts.length ? 'Batas: ' + parts.join(' · ') + '.' : '';
+  // null / 0 = tanpa batas (default user biasa sejak 17 Nov 2026).
+  const acc = limits.max_accounts ? 'maks ' + limits.max_accounts + ' akun Threads' : 'akun Threads tanpa batas';
+  const post = limits.max_posts_per_day ? limits.max_posts_per_day + ' post/hari' : 'post tanpa batas/hari';
+  const reply = limits.max_replies_per_day ? limits.max_replies_per_day + ' balasan/hari' : 'balasan tanpa batas/hari';
+  return 'Batas: ' + [acc, post, reply].join(' · ') + '.';
 }
 async function loadMe(){
   const info = document.getElementById('meInfo');
@@ -606,6 +613,35 @@ async function regenApiKey(isRegen){
 async function copyShownApiKey(){
   const t = document.getElementById('shownApiKey').textContent;
   try { await navigator.clipboard.writeText(t); toast('API key disalin'); }
+  catch(e) { toast('Gagal menyalin — salin manual dari layar'); }
+}
+
+async function loadMusePrompt(){
+  const pre = document.getElementById('musePrompt');
+  const msg = document.getElementById('musePromptMsg');
+  const keyEl = document.getElementById('museApiKey');
+  const key = keyEl ? keyEl.value.trim() : '';
+  if (pre) pre.textContent = 'Memuat...';
+  if (msg) msg.textContent = '';
+  // Bila API key diisi, kirim sebagai header supaya prompt terisi key
+  // itu; bila kosong, pakai sesi cookie (prompt berisi placeholder).
+  const opts = key ? {headers: {'X-API-Key': key}} : undefined;
+  const {ok, j} = await fetchJsonNoRedirect('/api/muse-prompt', opts);
+  if (!ok || !j || !j.ok || !j.prompt) {
+    if (pre) pre.textContent = '';
+    if (msg) msg.textContent = 'Prompt tidak bisa dimuat: ' + esc((j && j.error) || 'tidak diketahui');
+    return;
+  }
+  if (pre) pre.textContent = j.prompt;
+  if (msg) msg.textContent = j.key_injected
+    ? 'Prompt sudah berisi API key kamu — tinggal salin.'
+    : 'Prompt memakai {{API_KEY}} sebagai placeholder — ganti dengan API key dari panel Akun Saya di atas, atau isi kolom API key lalu klik Tampilkan Prompt.';
+}
+async function copyMusePrompt(){
+  const pre = document.getElementById('musePrompt');
+  const t = pre ? pre.textContent : '';
+  if (!t || t === 'Memuat...') { toast('Prompt belum dimuat'); return; }
+  try { await navigator.clipboard.writeText(t); toast('Prompt disalin'); }
   catch(e) { toast('Gagal menyalin — salin manual dari layar'); }
 }
 
@@ -1317,7 +1353,7 @@ function showTab(name){
   if (name==='rules') loadRules();
   if (name==='history') loadHistory();
   if (name==='settings') loadSettings();
-  if (name==='accounts') { loadAccounts(); loadTokenRefreshes(); loadMe(); }
+  if (name==='accounts') { loadAccounts(); loadTokenRefreshes(); loadMe(); loadMusePrompt(); }
 }
 
 loadAccounts().then(()=>{ loadFeed(true); loadMe(); });

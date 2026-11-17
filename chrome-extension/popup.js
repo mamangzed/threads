@@ -39,9 +39,11 @@ async function refresh() {
     el.textContent = "Belum pernah sync";
     el.className = "";
   }
-  const saved = await chrome.storage.local.get("gatePassword");
+  const saved = await chrome.storage.local.get(["gatePassword", "apiKey"]);
   $("gatePass").value = saved.gatePassword || "";
   $("gatePass").placeholder = "password gate";
+  $("apiKey").value = saved.apiKey || "";
+  $("apiKey").placeholder = "tk_…";
 }
 
 $("syncBtn").addEventListener("click", async () => {
@@ -61,6 +63,10 @@ $("syncBtn").addEventListener("click", async () => {
 
 $("gatePass").addEventListener("change", async (e) => {
   await chrome.storage.local.set({ gatePassword: e.target.value.trim() });
+});
+
+$("apiKey").addEventListener("change", async (e) => {
+  await chrome.storage.local.set({ apiKey: e.target.value.trim() });
 });
 
 refresh();

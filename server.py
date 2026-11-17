@@ -11,6 +11,7 @@ Security:
 import hashlib
 import hmac
 import html
+import io
 import json
 import logging
 import mimetypes
@@ -21,6 +22,7 @@ import secrets
 import threading
 import time
 import uuid
+import zipfile
 from datetime import date, datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
@@ -43,6 +45,13 @@ if not WEB_PASSWORD:
     raise SystemExit("WEB_PASSWORD env wajib diisi (password gate web)")
 HOST = "127.0.0.1"
 PORT = int(os.environ.get("PORT", "7691"))
+
+# URL publik aplikasi (untuk prompt Muse + template). Bisa di-override
+# lewat env THREADS_PUBLIC_URL / BASE_URL; server sendiri tidak tahu
+# nama publiknya (dia hanya bind 127.0.0.1:PORT di belakang proxy).
+BASE_URL = (os.environ.get("THREADS_PUBLIC_URL")
+            or os.environ.get("BASE_URL")
+            or "https://threads.wandalo.dev")
 
 ACCOUNTS_FILE = os.path.join(DATA_DIR, "accounts.json")
 RULES_FILE = os.path.join(DATA_DIR, "rules.json")
@@ -390,20 +399,21 @@ def check_user_daily_limit(user, kind):
 
     kind "post" counts post+repost entries; kind "reply" counts reply
     entries. Admin limits are generous caps, not a bypass. Returns an
-    error string when the cap is hit, else None.
+    error string when the cap is hit, else None. A limit of None (or
+    <= 0) means UNLIMITED (default user biasa sejak 17 Nov 2026).
     """
     limits = (user or {}).get("limits") or users_store.DEFAULT_LIMITS
     if kind == "post":
-        limit = limits.get("max_posts_per_day", 10)
+        limit = limits.get("max_posts_per_day")
         used = count_user_actions_today(user["id"], {"post", "repost"})
         label = "post"
     elif kind == "reply":
-        limit = limits.get("max_replies_per_day", 20)
+        limit = limits.get("max_replies_per_day")
         used = count_user_actions_today(user["id"], {"reply"})
         label = "balasan"
     else:
         return None
-    if limit is not None and used >= limit:
+    if limit is not None and limit > 0 and used >= limit:
         return f"Batas harian user tercapai: {label} {used}/{limit} hari ini."
     return None
 
@@ -684,12 +694,15 @@ class Handler(BaseHTTPRequestHandler):
 
     def _check_account_limit(self, username):
         """403 when the caller already owns max_accounts (unless this is
-        a refresh of an account they already own)."""
+        a refresh of an account they already own). A limit of None (or
+        <= 0) means UNLIMITED (default user biasa sejak 17 Nov 2026)."""
         if self._caller_is_admin():
             limits = users_store.ADMIN_LIMITS
         else:
             limits = (self._auth["user"] or {}).get("limits") or users_store.DEFAULT_LIMITS
-        limit = limits.get("max_accounts", 3)
+        limit = limits.get("max_accounts")
+        if limit is None or limit <= 0:
+            return False  # tanpa batas: tidak pernah memblokir
         owned = self._visible_accounts()
         if username and any(a["username"].lower() == username.lower() for a in owned):
             return False  # refresh of own account: not a new account
@@ -882,6 +895,58 @@ class Handler(BaseHTTPRequestHandler):
             return self._send_json({"ok": False, "error": "user tidak ditemukan"}, 404)
         return self._send_json({"ok": True, "api_key": plain})
 
+    # -- "Hubungkan ke Muse" (prompt + extension) ----------------------
+    def _api_muse_prompt(self):
+        """Prompt 'Hubungkan ke Muse' untuk caller ini.
+
+        API key plaintext hanya bisa disuntikkan bila caller sendiri
+        menyertakannya lewat header X-API-Key (server hanya menyimpan
+        hash key, jadi key tidak bisa dipulihkan dari sesi cookie).
+        Caller cookie mendapat prompt dengan placeholder {{API_KEY}} +
+        petunjuk menggantinya dari panel Akun Saya.
+        """
+        template_path = os.path.join(BASE_DIR, "muse-prompt-template.md")
+        try:
+            with open(template_path, encoding="utf-8") as f:
+                prompt = f.read()
+        except FileNotFoundError:
+            return self._send_json({"ok": False, "error": "template prompt belum tersedia"}, 500)
+        presented = (self.headers.get("X-API-Key") or "").strip()
+        key = presented if (self._auth or {}).get("via") == "api_key" and presented else None
+        prompt = prompt.replace("{{BASE_URL}}", BASE_URL)
+        if key:
+            prompt = prompt.replace("{{API_KEY}}", key)
+        user = (self._auth or {}).get("user") or {}
+        return self._send_json({
+            "ok": True,
+            "prompt": prompt,
+            "key_injected": bool(key),
+            "api_key_prefix": user.get("api_key_prefix"),
+        })
+
+    def _api_extension_zip(self):
+        """Zip chrome-extension/ on-the-fly (selalu dari direktori,
+        jadi tidak basi). Berisi manifest + background + popup + ikon;
+        tidak ada file .bak atau rahasia di dalamnya."""
+        ext_dir = os.path.join(BASE_DIR, "chrome-extension")
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+            for root, dirs, files in os.walk(ext_dir):
+                dirs.sort()
+                for name in sorted(files):
+                    if ".bak" in name or name.startswith("."):
+                        continue  # jangan ikutkan backup lama (.bak-*)
+                    full = os.path.join(root, name)
+                    z.write(full, os.path.relpath(full, ext_dir))
+        data = buf.getvalue()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/zip")
+        self.send_header("Content-Disposition",
+                         'attachment; filename="threads-session-sync.zip"')
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
     # -- admin (/api/admin/*, kind "admin" only) -----------------------
     def _api_admin_users(self):
         out = []
@@ -1016,6 +1081,10 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/search-user":
             q = (qs.get("q") or [""])[0]
             return self._api_search_user(q)
+        if path == "/api/muse-prompt":
+            return self._api_muse_prompt()
+        if path == "/api/extension.zip":
+            return self._api_extension_zip()
         return self._send_json({"ok": False, "error": "not found"}, 404)
 
     def _active_client(self):
@@ -1040,10 +1109,38 @@ class Handler(BaseHTTPRequestHandler):
             return None, None, "akun tidak bisa dipakai: token lama tidak bisa didekripsi"
         return account, REGISTRY.get(account["id"], account["username"]), None
 
-    def _api_feed(self, qs):
-        account, _, err = self._active_client()
+    def _resolve_action_account(self, account_id):
+        """Resolve the account for a post/reply/feed call.
+
+        Returns (account, label, err, status): account+label on success,
+        err message + HTTP status on failure. An explicit account_id
+        must belong to the caller (403 "bukan akun Anda", 404 when the
+        id does not exist) — this is what lets one API-key caller drive
+        several accounts in parallel without racing the shared select.
+        Without account_id, fall back to the session's selected account
+        (_active_client); its errors stay 400 for compat with the old
+        cron flow (select -> action).
+        """
+        if account_id:
+            account_id = str(account_id).strip()
+            acc, err = self._owned_account(account_id)
+            if err == "forbidden":
+                return None, None, "bukan akun Anda", 403
+            if err:
+                return None, None, "akun tidak ditemukan", 404
+            if acc.get("enc") == "legacy-unreadable":
+                return None, None, "akun tidak bisa dipakai: token lama tidak bisa didekripsi", 400
+            return acc, REGISTRY.get(acc["id"], acc["username"]), None, 200
+        account, label, err = self._active_client()
         if err:
-            return self._send_json({"ok": False, "error": err}, 400)
+            return None, None, err, 400
+        return account, label, None, 200
+
+    def _api_feed(self, qs):
+        account, _, err, status = self._resolve_action_account(
+            (qs.get("account_id") or [None])[0])
+        if err:
+            return self._send_json({"ok": False, "error": err}, status)
         max_id = (qs.get("max_id") or [None])[0]
         try:
             res = _fetch_feed(account["id"], account["username"], max_id)
@@ -1810,15 +1907,17 @@ class Handler(BaseHTTPRequestHandler):
         return self._send_json({"ok": True, "rule": out})
 
     def _api_publish(self):
-        account, _, err = self._active_client()
-        if err:
-            return self._send_json({"ok": False, "error": err}, 400)
+        # Baca body dulu: account_id eksplisit (bila ada) menentukan akun
+        # yang dipakai — tanpa itu, pakai akun terpilih di sesi (kompat
+        # alur lama select -> posting).
         ctype = self.headers.get("Content-Type") or ""
         text, image_url, image_path = "", None, None
+        account_id = None
         if ctype.startswith("multipart/form-data"):
             fields, files = parse_multipart(self._read_body(), ctype)
             text = (fields.get("text") or "").strip()
             image_url = (fields.get("url") or "").strip() or None
+            account_id = (fields.get("account_id") or "").strip() or None
             if "image" in files:
                 fname, data = files["image"]
                 ext = os.path.splitext(fname)[1].lower() or ".jpg"
@@ -1836,6 +1935,10 @@ class Handler(BaseHTTPRequestHandler):
             image_url = (body.get("url") or "").strip() or None
             if body.get("image_url"):
                 image_url = body.get("image_url")
+            account_id = (body.get("account_id") or "").strip() or None
+        account, _, err, status = self._resolve_action_account(account_id)
+        if err:
+            return self._send_json({"ok": False, "error": err}, status)
         if not text:
             return self._send_json({"ok": False, "error": "teks thread wajib diisi"}, 400)
         if len(text) > 500:
@@ -1861,9 +1964,9 @@ class Handler(BaseHTTPRequestHandler):
         return self._send_json({"ok": True, "result": res, "link": link})
 
     def _api_post_action(self, post_id, action):
-        account, _, err = self._active_client()
-        if err:
-            return self._send_json({"ok": False, "error": err}, 400)
+        # Baca body dulu: account_id eksplisit (bila ada) menentukan akun
+        # yang dipakai — tanpa itu, pakai akun terpilih di sesi (kompat
+        # alur lama select -> aksi).
         ctype = self.headers.get("Content-Type") or ""
         body, image_path = {}, None
         if ctype.startswith("multipart/form-data"):
@@ -1882,6 +1985,10 @@ class Handler(BaseHTTPRequestHandler):
                     f.write(data)
         else:
             body = self._read_json()
+        account_id = (body.get("account_id") or "").strip() or None
+        account, _, err, status = self._resolve_action_account(account_id)
+        if err:
+            return self._send_json({"ok": False, "error": err}, status)
         settings = load_settings()
         kind = {"like": "like", "reply": "reply", "repost": "post"}.get(action)
         if kind:

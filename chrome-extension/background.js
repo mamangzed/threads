@@ -2,6 +2,8 @@
 // Memantau cookie sessionid Instagram; setiap kali berubah (login ulang /
 // ganti akun / rotasi), kirim otomatis ke aplikasi Threads supaya sesi di
 // sana selalu segar tanpa salin manual.
+// Auth: API key pengguna (diisi di popup) diutamakan — sesi masuk ke akun
+// milik pemilik key. Tanpa API key, pakai password gate (khusus admin).
 // Sessionid HANYA dikirim ke threads.wandalo.dev (server Sophie sendiri),
 // tidak ke tempat lain.
 
@@ -85,16 +87,31 @@ async function syncSessionid(reason) {
     return { ok: true, unchanged: true };
   }
   try {
-    await ensureGate();
+    // Auth: API key (pengguna) diutamakan — sesi masuk ke akun milik
+    // pemilik key. Tanpa key, pakai login gate (khusus admin).
+    // Dengan key, cookie TIDAK dikirim (credentials "omit") supaya cookie
+    // sesi lain (mis. admin) tidak mengalahkan key.
+    const apiKey = await getSetting("apiKey", "");
+    const headers = { "Content-Type": "application/json" };
+    let credentials = "include";
+    if (apiKey) {
+      headers["X-API-Key"] = apiKey;
+      credentials = "omit";
+    } else {
+      await ensureGate();
+    }
     const tabUsername = await usernameFromActiveTab();
     const res = await fetch(SERVER + "/api/accounts", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
+      headers,
+      credentials,
       body: JSON.stringify({ sessionid, username: tabUsername || undefined, source: "extension" }),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok || !data.ok) {
+      if (apiKey && res.status === 401) {
+        throw new Error("API key tidak valid (401) — periksa kolom API key di popup.");
+      }
       throw new Error(data.error || ("Server balas " + res.status));
     }
     const username = (data.account && data.account.username) || "";

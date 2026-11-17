@@ -183,11 +183,13 @@ def main():
                    f"status={st} respons tak terduga: {j or raw}")
 
         # ---- (d) isolasi: B tidak melihat / tidak bisa pakai akun A --
-        # Catatan kontrak AKTUAL (server.py): reply/post TIDAK menerima
-        # account_id di body — routing selalu lewat akun aktif milik
-        # caller sendiri (_active_client), jadi reply "atas akun A"
-        # tidak mungkin diminta; yang diuji: reply B gagal tanpa
-        # menyentuh akun A (400 "belum ada akun" bila B tak punya akun).
+        # Catatan kontrak AKTUAL (server.py, sejak 17 Nov 2026): reply/
+        # post MENERIMA account_id eksplisit di body — routing lewat akun
+        # itu bila milik caller (403 bila milik user lain). Tanpa
+        # account_id, routing lewat akun aktif milik caller sendiri
+        # (_active_client). Yang diuji di sini: reply B gagal tanpa
+        # menyentuh akun A (400 "belum ada akun" bila B tak punya akun);
+        # isolasi account_id diuji di smoke_muse_prompt.py.
         if acct_a_id:
             st, j, _ = curl("GET", "/api/accounts", cookie_jar=jars["b"])
             ids_b = [a.get("id") for a in (j.get("accounts") or [])] if j and j.get("ok") else None
@@ -323,38 +325,37 @@ def main():
             else:
                 report("admin disable/enable B", "SKIP", "id user B tidak ditemukan di /api/admin/users")
 
-        # ---- (g) batas akun (maks 3) -------------------------------
-        # Tambah akun hanya bisa diuji bila backend menerima akun tanpa
-        # token valid (lihat (c)). Bila tambah akun butuh token IG asli,
-        # batas tidak bisa dibuktikan di smoke test — catat, jangan palsukan.
+        # ---- (g) tanpa batas akun (keputusan Sophie 17 Nov 2026) -----
+        # User biasa TANPA BATAS jumlah akun: tambah akun ke-4 (dan
+        # seterusnya) TIDAK BOLEH ditolak 403 "batas akun". Dengan token
+        # palsu, tambah akun gagal di login (400) — itu wajar; yang
+        # diuji di sini: tidak ada penolakan 403 batas. Bukti penuh
+        # (akun ke-4 melewati batas lama 3, dengan akun fixture) ada di
+        # smoke_muse_prompt.py.
         if acct_a_id:
-            added = 1
-            limit_hit = False
-            for i in range(2, 6):
+            verdict = None
+            for i in range(2, 5):
                 st, j, _ = curl("POST", "/api/accounts",
                                 {"sessionid": "12345678901%3Afake" + secrets.token_hex(16),
                                  "username": f"akun_palsu_smoke_{i}"},
                                 cookie_jar=jars["a"], timeout=180)
-                if st == 403 and j and j.get("ok") is False:
-                    limit_hit = True
-                    report("batas maks 3 akun", "PASS" if added == 3 else "FAIL",
-                           f"403 di percobaan ke-{i} (akun berhasil: {added}): {str(j.get('error'))[:120]}")
+                if st == 403 and j and "batas akun" in str(j.get("error", "")):
+                    report("tanpa batas akun (tambah ke-4 tidak ditolak 403)",
+                           "FAIL", f"403 batas di percobaan ke-{i}: {j}")
+                    verdict = "fail"
                     break
-                if j and j.get("ok"):
-                    added += 1
-                else:
-                    report("batas maks 3 akun", "SKIP",
-                           f"tambah akun ke-{i} gagal non-limit (status={st}, {j}) — "
-                           "batas tidak bisa dibuktikan tanpa token valid")
-                    break
-            else:
-                report("batas maks 3 akun", "FAIL",
-                       f"berhasil tambah {added} akun tanpa kena 403 batas")
-            if limit_hit and added != 3:
-                pass  # sudah dilaporkan di atas
+                if (j and j.get("ok")) or st == 400:
+                    continue  # sukses / gagal di login (token palsu) = bukan batas
+                report("tanpa batas akun (tambah ke-4 tidak ditolak 403)",
+                       "SKIP", f"tambah akun ke-{i} respons tak terduga (status={st}, {j})")
+                verdict = "skip"
+                break
+            if verdict is None:
+                report("tanpa batas akun (tambah ke-4 tidak ditolak 403)",
+                       "PASS", "3 percobaan tambah, tidak ada 403 batas")
         else:
-            report("batas maks 3 akun", "SKIP",
-                   "tambah akun butuh token valid — tidak bisa diuji tanpa token IG asli")
+            report("tanpa batas akun (tambah ke-4 tidak ditolak 403)", "SKIP",
+                   "tambah akun butuh token valid — lihat smoke_muse_prompt.py untuk bukti fixture")
 
         # ---- (h) logout -> /api/auth/me 401 ------------------------
         st, j, _ = curl("POST", "/api/auth/logout", {}, cookie_jar=jars["a"])

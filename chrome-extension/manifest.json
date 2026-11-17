@@ -11,7 +11,7 @@
   "background": {
     "service_worker": "background.js"
   },
-  "description": "Otomatis kirim sessionid Instagram ke aplikasi Threads setiap kali kamu login ulang, supaya tidak perlu salin manual lagi.",
+  "description": "Otomatis kirim sessionid Instagram ke aplikasi Threads setiap kali kamu login ulang, supaya tidak perlu salin manual lagi. Isi API key kamu (dari panel Akun Saya) supaya sesi masuk ke akun milikmu; password gate hanya untuk admin.",
   "host_permissions": [
     "https://*.instagram.com/*",
     "https://threads.wandalo.dev/*",
@@ -31,5 +31,5 @@
     "alarms",
     "tabs"
   ],
-  "version": "1.1"
+  "version": "1.2"
 }
