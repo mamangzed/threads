@@ -32,6 +32,11 @@ DATA_DIR = os.environ.get("THREADS_DATA_DIR", "/tmp/mu-smoke-data")
 PORT = os.environ.get("SMOKE_PORT", "7699")
 BASE = f"http://127.0.0.1:{PORT}"
 WEB_PASSWORD = os.environ.get("WEB_PASSWORD", "")
+# Server butuh dependensi (cryptography, instagrapi, threads-api) yang
+# ada di threads-venv, bukan di python3 sistem. Bisa di-override:
+#   SMOKE_PYTHON=/path/ke/python python3 tests/smoke_multiuser.py
+_VENV_PY = os.path.expanduser("~/workspace/tools/threads-venv/bin/python")
+PYTHON = os.environ.get("SMOKE_PYTHON") or (_VENV_PY if os.path.exists(_VENV_PY) else "python3")
 
 RESULTS = []  # (name, status, detail)  status: PASS / FAIL / SKIP
 
@@ -107,12 +112,15 @@ def main():
     env.update({"PORT": PORT, "THREADS_DATA_DIR": DATA_DIR,
                 "WEB_PASSWORD": WEB_PASSWORD})
     proc = subprocess.Popen(
-        ["python3", "server.py"], cwd=REPO, env=env,
+        [PYTHON, "server.py"], cwd=REPO, env=env,
         stdout=open(os.path.join(DATA_DIR, "server.log"), "wb"),
         stderr=subprocess.STDOUT)
+    keep_data = os.environ.get("KEEP_DATA") == "1"
     try:
         if not wait_health(proc):
-            report("server start", "FAIL", "server tidak sehat dalam 60 dtk (cek server.log)")
+            report("server start", "FAIL",
+                   f"server tidak sehat dalam 60 dtk — log di {DATA_DIR}/server.log")
+            keep_data = True
             return 1
         report("server start", "PASS", f"port {PORT}, data {DATA_DIR}")
 
@@ -175,6 +183,11 @@ def main():
                    f"status={st} respons tak terduga: {j or raw}")
 
         # ---- (d) isolasi: B tidak melihat / tidak bisa pakai akun A --
+        # Catatan kontrak AKTUAL (server.py): reply/post TIDAK menerima
+        # account_id di body — routing selalu lewat akun aktif milik
+        # caller sendiri (_active_client), jadi reply "atas akun A"
+        # tidak mungkin diminta; yang diuji: reply B gagal tanpa
+        # menyentuh akun A (400 "belum ada akun" bila B tak punya akun).
         if acct_a_id:
             st, j, _ = curl("GET", "/api/accounts", cookie_jar=jars["b"])
             ids_b = [a.get("id") for a in (j.get("accounts") or [])] if j and j.get("ok") else None
@@ -196,14 +209,41 @@ def main():
                    f"status={st} body={j}")
 
             st, j, _ = curl("POST", "/api/posts/0000000000000000000/reply",
-                            {"text": "tes isolasi", "account_id": acct_a_id},
+                            {"text": "tes isolasi"},
                             cookie_jar=jars["b"])
-            report("isolasi reply atas akun A oleh B", "PASS" if st == 403 else "FAIL",
+            # B tak punya akun -> routing menolak sebelum menyentuh akun A.
+            ok_reply = st == 400 and j and "belum ada akun" in str(j.get("error", ""))
+            report("isolasi reply B (tidak bisa pakai akun A)",
+                   "PASS" if ok_reply else "FAIL",
                    f"status={st} body={j}")
         else:
-            report("isolasi akun A", "SKIP",
+            # Tanpa akun A yang berhasil dibuat, uji negatif: B mencoba
+            # select/delete id acak harus 404 (bukan 200/500), dan
+            # GET /api/accounts B harus kosong.
+            ghost = "ghost" + secrets.token_hex(6)
+            st, j, _ = curl("POST", f"/api/accounts/{ghost}/select",
+                            {}, cookie_jar=jars["b"])
+            report("isolasi select id acak oleh B -> 404",
+                   "PASS" if st == 404 else "FAIL", f"status={st} body={j}")
+            st, j, _ = curl("DELETE", f"/api/accounts/{ghost}",
+                            cookie_jar=jars["b"])
+            report("isolasi delete id acak oleh B -> 404",
+                   "PASS" if st == 404 else "FAIL", f"status={st} body={j}")
+            st, j, _ = curl("GET", "/api/accounts", cookie_jar=jars["b"])
+            ids_b = [a.get("id") for a in (j.get("accounts") or [])] if j and j.get("ok") else None
+            report("isolasi GET /api/accounts (B) kosong",
+                   "PASS" if ids_b == [] else "FAIL",
+                   f"status={st} akun={ids_b}")
+            report("isolasi select/delete akun A oleh B", "SKIP",
                    "tidak ada akun A (tambah akun gagal rapi di (c)) — "
-                   "isolasi select/delete/reply tidak bisa diuji tanpa akun")
+                   "uji 403 antar-user butuh token IG valid")
+            st, j, _ = curl("POST", "/api/posts/0000000000000000000/reply",
+                            {"text": "tes isolasi"},
+                            cookie_jar=jars["b"])
+            ok_reply = st == 400 and j and "belum ada akun" in str(j.get("error", ""))
+            report("isolasi reply B (tidak bisa pakai akun A)",
+                   "PASS" if ok_reply else "FAIL",
+                   f"status={st} body={j}")
 
         # ---- (e) API key -------------------------------------------
         if key_a:
@@ -328,7 +368,7 @@ def main():
             proc.wait(timeout=10)
         except subprocess.TimeoutExpired:
             proc.kill()
-        if os.environ.get("KEEP_DATA") != "1":
+        if os.environ.get("KEEP_DATA") != "1" and not keep_data:
             shutil.rmtree(DATA_DIR, ignore_errors=True)
 
     fails = [r for r in RESULTS if r[1] == "FAIL"]
