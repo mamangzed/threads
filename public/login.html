@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Threads App — Login</title>
+<style>
+  body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; background: #f4f4f5; color: #18181b; }
+  .box { max-width: 360px; margin: 18vh auto 0; background: #fff; border: 1px solid #e4e4e7; border-radius: 12px; padding: 24px; }
+  h1 { margin: 0 0 4px; font-size: 20px; }
+  p { color: #71717a; font-size: 14px; margin: 0 0 16px; }
+  input { width: 100%; padding: 11px; border: 1px solid #d4d4d8; border-radius: 8px; font-size: 15px; box-sizing: border-box; }
+  button { width: 100%; margin-top: 12px; border: 0; border-radius: 8px; padding: 11px; font-size: 15px; cursor: pointer; background: #18181b; color: #fff; }
+  .err { color: #991b1b; font-size: 14px; margin-top: 10px; min-height: 18px; }
+</style>
+</head>
+<body>
+<div class="box">
+  <h1>Threads App</h1>
+  <p>Masukkan password dashboard untuk lanjut.</p>
+  <form onsubmit="doLogin(event)">
+    <input type="password" id="pw" placeholder="Password" autocomplete="current-password" autofocus>
+    <button type="submit" id="btn">Masuk</button>
+  </form>
+  <div class="err" id="err"></div>
+</div>
+<script>
+async function doLogin(e){
+  e.preventDefault();
+  const pw = document.getElementById('pw').value;
+  const btn = document.getElementById('btn');
+  btn.disabled = true; btn.textContent = 'Memeriksa...';
+  const r = await fetch('/api/login', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({password: pw})});
+  if (r.ok) { location.href = '/'; return; }
+  document.getElementById('err').textContent = 'Password salah.';
+  btn.disabled = false; btn.textContent = 'Masuk';
+}
+</script>
+</body>
+</html>

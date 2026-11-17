@@ -1,0 +1,25 @@
+# Data & rahasia — JANGAN ikut commit (repo ini PUBLIK)
+data/
+.run/
+runs/
+__pycache__/
+*.pyc
+.cookies.txt
+cookies.txt
+media-generation-*
+caa_reg_probe_full.json
+*.log
+*.pid
+*.bak*
+*.zip
+.env
+# Skrip sekali-pakai / debug lokal (bukan bagian aplikasi)
+shot-threads.js
+shot-threads2.js
+keep_alive_run.py
+diag_timeline.py
+verify_p0.py
+test_*.py
+probe_*.py
+caa_reg_probe.py
+test-timeline-vps.py

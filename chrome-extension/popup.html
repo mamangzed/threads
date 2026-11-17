@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<title>Threads Session Sync</title>
+<style>
+  body { width: 320px; margin: 0; padding: 14px; font-family: system-ui, sans-serif; color: #111; }
+  h1 { font-size: 15px; margin: 0 0 4px; }
+  p.sub { font-size: 12px; color: #666; margin: 0 0 12px; }
+  .row { font-size: 13px; margin: 6px 0; }
+  .label { color: #666; }
+  .ok { color: #0a7d2c; font-weight: 600; }
+  .err { color: #c00; font-weight: 600; }
+  button { width: 100%; padding: 10px; margin-top: 10px; border: 0; border-radius: 8px; background: #111; color: #fff; font-size: 14px; cursor: pointer; }
+  button:disabled { opacity: .5; cursor: default; }
+  input { width: 100%; box-sizing: border-box; padding: 8px; margin-top: 4px; border: 1px solid #ccc; border-radius: 6px; font-size: 13px; }
+  .note { font-size: 11px; color: #888; margin-top: 10px; line-height: 1.4; }
+</style>
+</head>
+<body>
+  <h1>Threads Session Sync</h1>
+  <p class="sub">Sessionid Threads di Chrome ini otomatis dikirim ke aplikasi Threads setiap kali berubah.</p>
+  <div class="row"><span class="label">Status:</span> <span id="status">…</span></div>
+  <div class="row"><span class="label">Akun terakhir:</span> <span id="username">—</span></div>
+  <div class="row"><span class="label">Sync terakhir:</span> <span id="lastSync">—</span></div>
+  <div class="row"><span class="label">Sessionid:</span> <span id="sid">—</span></div>
+  <button id="syncBtn">Sync Sekarang</button>
+  <div style="margin-top:12px">
+    <span class="label" style="font-size:12px">Password gate aplikasi Threads</span>
+    <input id="gatePass" type="password" placeholder="password gate" autocomplete="off">
+  </div>
+  <p id="hint" class="note" style="display:none;color:#c00">Extension ini membaca sessionid dari Threads (threads.net). Kalau belum login di sana, <a href="https://www.threads.net/" target="_blank">buka threads.net</a> dan login dulu, lalu klik Sync Sekarang.</p>
+  <p class="note">Sessionid hanya dikirim ke threads.wandalo.dev (server kamu sendiri). Tidak ada data lain yang dibaca atau dikirim.</p>
+  <script src="popup.js"></script>
+</body>
+</html>

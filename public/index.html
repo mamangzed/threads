@@ -1,0 +1,1239 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Threads</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: #fff; color: #000; font-size: 15px; -webkit-font-smoothing: antialiased; }
+  button { font-family: inherit; }
+  a { color: inherit; }
+
+  /* ---------- layout ---------- */
+  .app { display: flex; min-height: 100vh; }
+  .sidebar { display: none; }
+  .main { flex: 1; width: 100%; max-width: 640px; margin: 0 auto; border-left: 1px solid #efefef; border-right: 1px solid #efefef; min-height: 100vh; background: #fff; padding-bottom: 76px; }
+  @media (min-width: 768px) {
+    .sidebar { display: flex; flex-direction: column; align-items: center; width: 76px; flex: 0 0 76px; position: sticky; top: 0; height: 100vh; padding: 14px 0 20px; gap: 6px; background: #fff; z-index: 30; }
+    .main { padding-bottom: 40px; }
+    .topbar, .bottomnav { display: none !important; }
+  }
+
+  /* ---------- top bar (mobile) ---------- */
+  .topbar { position: sticky; top: 0; z-index: 30; height: 56px; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,.9); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-bottom: 1px solid #efefef; }
+  .topbar .logo { width: 28px; height: 28px; }
+  .topbar .tb-btn { position: absolute; display: flex; align-items: center; justify-content: center; width: 40px; height: 40px; border-radius: 50%; border: 0; background: none; cursor: pointer; color: #000; }
+  .topbar .tb-btn:hover { background: #f5f5f5; }
+  .topbar .tb-more { left: 8px; }
+  .topbar .tb-profile { right: 8px; padding: 0; }
+
+  /* ---------- sidebar / bottom nav ---------- */
+  .navbtn { display: flex; align-items: center; justify-content: center; width: 52px; height: 52px; border-radius: 14px; border: 0; background: none; cursor: pointer; color: #777; padding: 0; }
+  .navbtn:hover { background: #f5f5f5; color: #000; }
+  .navbtn.on { color: #000; }
+  .navbtn svg { width: 26px; height: 26px; }
+  .sidebar .logo { width: 34px; height: 34px; margin: 2px 0 18px; }
+  .sidebar .spacer { flex: 1; }
+  .sidebar .create { background: #f0f0f0; border-radius: 14px; }
+  .sidebar .create:hover { background: #e5e5e5; }
+  .avatarbtn { width: 36px; height: 36px; border-radius: 50%; border: 0; cursor: pointer; background: #000; color: #fff; font-weight: 700; font-size: 15px; display: flex; align-items: center; justify-content: center; padding: 0; overflow: hidden; }
+  .avatarbtn img { width: 100%; height: 100%; object-fit: cover; }
+  .bottomnav { position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; height: 60px; display: flex; align-items: center; justify-content: space-around; background: #fff; border-top: 1px solid #efefef; padding-bottom: env(safe-area-inset-bottom); }
+  .bottomnav .navbtn { width: 56px; height: 52px; }
+
+  /* ---------- feed header ---------- */
+  .feedhead { position: sticky; top: 56px; z-index: 20; background: rgba(255,255,255,.9); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-bottom: 1px solid #efefef; height: 52px; display: flex; align-items: center; justify-content: center; }
+  @media (min-width: 768px) { .feedhead { top: 0; } }
+  .feedhead .ftitle { font-weight: 700; font-size: 15px; position: relative; padding: 16px 4px 14px; }
+  .feedhead .ftitle::after { content: ""; position: absolute; left: 50%; transform: translateX(-50%); bottom: 0; width: 48px; height: 2px; border-radius: 2px; background: #000; }
+  .feedhead .refresh { position: absolute; right: 10px; display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 50%; border: 0; background: none; cursor: pointer; color: #777; }
+  .feedhead .refresh:hover { background: #f5f5f5; color: #000; }
+  .feedhead .refresh svg { width: 20px; height: 20px; }
+
+  /* ---------- posts (Threads style) ---------- */
+  .post { display: flex; gap: 12px; padding: 12px 16px; border-bottom: 1px solid #efefef; }
+  @media (min-width: 768px) { .post:hover { background: #fafafa; } }
+  .acol { display: flex; flex-direction: column; align-items: center; flex-shrink: 0; }
+  .avatar { width: 36px; height: 36px; border-radius: 50%; object-fit: cover; background: #efefef; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 15px; color: #fff; background: #999; }
+  .threadline { width: 2px; background: #e5e5e5; border-radius: 2px; flex: 1; margin-top: 6px; min-height: 12px; }
+  .pbody { flex: 1; min-width: 0; }
+  .phead { display: flex; align-items: baseline; gap: 6px; }
+  .phead .username { font-weight: 700; font-size: 15px; }
+  .phead .verified { color: #0095f6; font-size: 13px; }
+  .phead .time { color: #777; font-size: 15px; white-space: nowrap; }
+  .phead .morebtn { margin-left: auto; display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; border: 0; background: none; cursor: pointer; color: #777; flex-shrink: 0; }
+  .phead .morebtn:hover { background: #f5f5f5; color: #000; }
+  .ptext { font-size: 15px; line-height: 1.4; margin-top: 2px; white-space: pre-wrap; word-break: break-word; cursor: pointer; }
+  .pimg { display: block; max-width: 100%; border-radius: 12px; border: 1px solid #efefef; margin-top: 8px; }
+  .actions { display: flex; gap: 2px; margin-top: 10px; margin-left: -8px; }
+  .act { display: flex; align-items: center; gap: 5px; background: none; border: 0; color: #777; padding: 6px 8px; border-radius: 20px; cursor: pointer; font-size: 13px; }
+  .act:hover { background: #f5f5f5; color: #000; }
+  .act svg { width: 22px; height: 22px; }
+  .act.liked { color: #ff3040; }
+  .act.liked svg { fill: #ff3040; stroke: #ff3040; }
+  .act.liked:hover { background: #fff0f1; color: #ff3040; }
+  .reply-preview { display: flex; gap: 8px; align-items: center; margin-top: 10px; color: #777; font-size: 14px; cursor: pointer; }
+  .reply-preview .avatar { width: 22px; height: 22px; font-size: 11px; }
+  .replybox { margin-top: 10px; }
+  .replybox textarea { width: 100%; min-height: 60px; padding: 10px 12px; border: 1px solid #dbdbdb; border-radius: 12px; font-size: 15px; font-family: inherit; resize: vertical; }
+  .replybox textarea:focus { outline: none; border-color: #000; }
+  .detail { margin-top: 10px; border-top: 1px solid #efefef; padding-top: 2px; }
+  .detail .post { border-bottom: 0; padding-left: 0; padding-right: 0; }
+  .detail .post:hover { background: none; }
+
+  /* ---------- panels (inbox / rules / history / settings / accounts) ---------- */
+  .panel { padding: 16px; border-bottom: 1px solid #efefef; }
+  .panel h2 { margin: 0 0 4px; font-size: 18px; }
+  .panel h3 { margin: 18px 0 6px; font-size: 16px; }
+  .muted { color: #777; font-size: 14px; line-height: 1.45; }
+  .muted.small { font-size: 13px; }
+  label { display: block; font-size: 14px; font-weight: 600; margin: 12px 0 5px; }
+  select, input[type=text], input[type=password], input[type=number], textarea { width: 100%; padding: 11px 12px; border: 1px solid #dbdbdb; border-radius: 12px; font-size: 15px; font-family: inherit; background: #fff; color: #000; }
+  select:focus, input:focus, textarea:focus { outline: none; border-color: #000; }
+  textarea { min-height: 90px; resize: vertical; }
+  .btn { border: 0; border-radius: 999px; padding: 10px 18px; font-size: 14px; font-weight: 600; cursor: pointer; background: #000; color: #fff; }
+  .btn:disabled { opacity: .4; cursor: default; }
+  .btn.secondary { background: #f0f0f0; color: #000; }
+  .btn.danger { background: #fff0f1; color: #ff3040; }
+  .btn-sm { padding: 7px 13px; font-size: 13px; }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .row.space { justify-content: space-between; }
+  .err { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; border-radius: 12px; padding: 12px; font-size: 14px; margin: 12px 16px 0; white-space: pre-wrap; word-break: break-word; }
+  .ok { background: #f0fdf4; border: 1px solid #bbf7d0; color: #166534; border-radius: 12px; padding: 12px; font-size: 14px; margin: 12px 16px 0; }
+  .badge { display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: #f0f0f0; color: #555; }
+  .badge.ok { background: #dcfce7; color: #166534; }
+  .badge.bad { background: #fee2e2; color: #991b1b; }
+  .badge.warn { background: #fef9c3; color: #854d0e; }
+  .parent { background: #fafafa; border: 1px solid #efefef; border-radius: 12px; padding: 10px 12px; margin: 8px 0; font-size: 14px; }
+  .parent .who { font-weight: 700; font-size: 13px; margin-bottom: 2px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  td, th { text-align: left; padding: 7px 4px; border-bottom: 1px solid #efefef; vertical-align: top; }
+  /* ---------- history cards (responsive, no table) ---------- */
+  .hist { display: flex; flex-direction: column; }
+  .hist-item { padding: 14px 0; border-bottom: 1px solid #efefef; }
+  .hist-item:last-child { border-bottom: 0; }
+  .hist-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13px; color: #777; }
+  .hist-top .who { font-weight: 700; color: #000; font-size: 14px; }
+  .hist-top .when { margin-left: auto; white-space: nowrap; }
+  .hist-detail { font-size: 14px; line-height: 1.5; margin-top: 6px; word-break: break-word; white-space: pre-wrap; }
+  .hist-foot { display: flex; align-items: center; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+  .hist-link { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; font-weight: 700; color: #000; text-decoration: none; border: 1px solid #e5e5e5; border-radius: 999px; padding: 5px 12px; }
+  .hist-link:hover { background: #f5f5f5; }
+  .charcount { font-size: 13px; color: #777; }
+  .hidden { display: none !important; }
+  .center { text-align: center; padding: 28px 0; color: #777; font-size: 14px; }
+  .acct-row { display: flex; gap: 12px; align-items: center; padding: 12px 0; border-bottom: 1px solid #efefef; }
+  .acct-row:last-child { border-bottom: 0; }
+  .acct-click { cursor: pointer; display: flex; gap: 12px; align-items: center; flex: 1; min-width: 0; }
+  .acct-click:hover strong { text-decoration: underline; }
+
+  /* ---------- composer ---------- */
+  .composer { display: flex; gap: 12px; padding: 16px; border-bottom: 1px solid #efefef; }
+  .composer .cbody { flex: 1; min-width: 0; }
+  .composer .who { font-weight: 700; font-size: 15px; margin-bottom: 2px; }
+  .composer textarea { border: 0; padding: 0; min-height: 70px; font-size: 15px; line-height: 1.4; resize: none; }
+  .composer textarea:focus { outline: none; border-color: transparent; }
+  .composer textarea::placeholder { color: #777; }
+  .composer .cfoot { display: flex; align-items: center; gap: 8px; margin-top: 10px; padding-top: 10px; border-top: 1px solid #efefef; }
+  .iconbtn { display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 50%; border: 0; background: none; cursor: pointer; color: #777; }
+  .iconbtn:hover { background: #f5f5f5; color: #000; }
+  .iconbtn svg { width: 22px; height: 22px; }
+  .composer .urlrow { margin-top: 10px; }
+  .composer .urlrow input { font-size: 14px; padding: 9px 12px; }
+  .imgprev { position: relative; display: inline-block; margin-top: 10px; }
+  .imgprev img { max-width: 100%; max-height: 320px; border-radius: 12px; border: 1px solid #efefef; display: block; }
+  .imgprev button { position: absolute; top: 8px; right: 8px; width: 28px; height: 28px; border-radius: 50%; border: 0; background: rgba(0,0,0,.65); color: #fff; cursor: pointer; font-size: 15px; line-height: 1; }
+
+  /* ---------- skeleton loader ---------- */
+  .skel-post { display: flex; gap: 12px; padding: 12px 16px; border-bottom: 1px solid #efefef; }
+  .skel { border-radius: 8px; background: linear-gradient(90deg, #f0f0f0 25%, #e4e4e7 50%, #f0f0f0 75%); background-size: 200% 100%; animation: shimmer 1.2s infinite; }
+  @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+  .skel-av { width: 36px; height: 36px; border-radius: 50%; flex-shrink: 0; }
+  .skel-line { height: 14px; margin-bottom: 8px; }
+  .skel-body { flex: 1; min-width: 0; padding-top: 2px; }
+
+  /* ---------- search ---------- */
+  .searchbar { position: sticky; top: 56px; z-index: 20; background: rgba(255,255,255,.9); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-bottom: 1px solid #efefef; padding: 10px 16px; }
+  @media (min-width: 768px) { .searchbar { top: 0; } }
+  .searchbar .srow { display: flex; gap: 8px; }
+  .searchbar input { flex: 1; background: #f0f0f0; border: 1px solid transparent; border-radius: 999px; padding: 10px 16px; font-size: 15px; }
+  .searchbar input:focus { border-color: #000; background: #fff; }
+  .search-sec { padding: 14px 16px 6px; font-weight: 700; font-size: 15px; }
+  .user-row { display: flex; gap: 12px; align-items: center; padding: 10px 16px; border-bottom: 1px solid #efefef; cursor: pointer; }
+  .user-row:hover { background: #fafafa; }
+  .user-row .uname { font-weight: 700; font-size: 15px; }
+  .user-row .fname { color: #777; font-size: 14px; }
+
+  /* ---------- profile ---------- */
+  .profile-head { padding: 16px; border-bottom: 1px solid #efefef; }
+  .backbtn { background: none; border: none; font-size: 20px; cursor: pointer; padding: 4px 8px 4px 0; }
+  .profile-head .pinfo { display: flex; gap: 14px; align-items: center; margin-top: 6px; }
+  .profile-head .pinfo img, .profile-head .pinfo .avatar { width: 64px; height: 64px; font-size: 28px; }
+  .profile-head .pname { font-size: 20px; font-weight: 700; }
+  .profile-head .pfull { color: #777; font-size: 15px; margin-top: 2px; }
+  .profile-head .pacts { margin-top: 12px; display: flex; gap: 8px; }
+  .profile-tabs { display: flex; border-bottom: 1px solid #efefef; position: sticky; top: 56px; z-index: 20; background: #fff; }
+  @media (min-width: 768px) { .profile-tabs { top: 0; } }
+  .profile-tabs .ptab { flex: 1; padding: 12px; background: none; border: none; border-bottom: 2px solid transparent; font-size: 15px; font-weight: 600; color: #777; cursor: pointer; }
+  .profile-tabs .ptab.on { color: #000; border-bottom-color: #000; }
+
+  /* ---------- dropdown menu / toast ---------- */
+  .menu { position: fixed; z-index: 60; background: #fff; border: 1px solid #e4e4e7; border-radius: 16px; box-shadow: 0 8px 28px rgba(0,0,0,.14); padding: 6px; min-width: 220px; }
+  .menu button { display: block; width: 100%; text-align: left; background: none; border: 0; padding: 11px 12px; border-radius: 10px; font-size: 15px; color: #000; cursor: pointer; }
+  .menu button:hover { background: #f5f5f5; }
+  .menu button.danger { color: #ff3040; }
+  #toast { position: fixed; left: 50%; transform: translateX(-50%) translateY(8px); bottom: 84px; z-index: 70; background: #000; color: #fff; padding: 11px 18px; border-radius: 999px; font-size: 14px; opacity: 0; pointer-events: none; transition: opacity .18s, transform .18s; white-space: nowrap; }
+  @media (min-width: 768px) { #toast { bottom: 28px; } }
+  #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ===== sidebar (desktop) ===== -->
+  <nav class="sidebar">
+    <svg class="logo" viewBox="0 0 24 24" fill="#000" aria-label="Threads"><path d="M18.263 11.097c-.03-3.486-1.92-5.586-5.111-5.586-2.13 0-3.922.963-4.863 2.499l2.062 1.438c.535-.843 1.272-1.543 2.628-1.543 1.528 0 2.318.85 2.544 2.431a15 15 0 0 0-2.236-.173c-4.125 0-6.068 1.867-6.068 4.336s1.943 3.99 4.804 3.99c3.139 0 5.013-2.115 5.781-4.735.798.361 1.348 1.204 1.348 2.47 0 3.387-3.907 5.232-7.22 5.232-4.885 0-8.077-3.207-8.077-8.424 0-6.392 4.223-10.487 9.9-10.487 3.808 0 5.69 1.671 6.97 3.914l2.108-1.475C21.44 2.078 18.331 0 13.663 0 6.227 0 1.168 5.277 1.168 12.934c0 7 4.953 11.066 10.856 11.066 4.878 0 9.809-2.846 9.809-7.716 0-2.545-1.46-4.231-3.569-5.187m-6.33 4.855c-1.077 0-2.026-.512-2.026-1.453 0-1.483 1.822-1.934 3.606-1.934.678 0 1.34.045 1.927.173-.422 1.927-1.671 3.215-3.508 3.214Z"/></svg>
+    <button class="navbtn on" data-tab="feed" onclick="showTab('feed')" title="Feed" aria-label="Feed"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/><path d="M9 21v-6h6v6"/></svg></button>
+    <button class="navbtn" data-tab="search" onclick="showTab('search')" title="Cari" aria-label="Cari"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></button>
+    <button class="navbtn" data-tab="history" onclick="showTab('history')" title="Riwayat" aria-label="Riwayat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></button>
+    <button class="navbtn create" data-tab="post" onclick="showTab('post')" title="Buat Thread" aria-label="Buat Thread"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+    <button class="navbtn" data-tab="inbox" onclick="showTab('inbox')" title="Inbox" aria-label="Inbox"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg></button>
+    <div class="spacer"></div>
+    <button class="navbtn" onclick="toggleMoreMenu(this)" title="Lainnya" aria-label="Lainnya"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg></button>
+    <button class="avatarbtn profile-avatar" onclick="showTab('accounts')" title="Akun" aria-label="Akun">?</button>
+  </nav>
+
+  <!-- ===== main column ===== -->
+  <div class="main">
+    <!-- top bar (mobile) -->
+    <div class="topbar">
+      <button class="tb-btn tb-more" onclick="toggleMoreMenu(this)" aria-label="Lainnya"><svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg></button>
+      <svg class="logo" viewBox="0 0 24 24" fill="#000" aria-label="Threads"><path d="M18.263 11.097c-.03-3.486-1.92-5.586-5.111-5.586-2.13 0-3.922.963-4.863 2.499l2.062 1.438c.535-.843 1.272-1.543 2.628-1.543 1.528 0 2.318.85 2.544 2.431a15 15 0 0 0-2.236-.173c-4.125 0-6.068 1.867-6.068 4.336s1.943 3.99 4.804 3.99c3.139 0 5.013-2.115 5.781-4.735.798.361 1.348 1.204 1.348 2.47 0 3.387-3.907 5.232-7.22 5.232-4.885 0-8.077-3.207-8.077-8.424 0-6.392 4.223-10.487 9.9-10.487 3.808 0 5.69 1.671 6.97 3.914l2.108-1.475C21.44 2.078 18.331 0 13.663 0 6.227 0 1.168 5.277 1.168 12.934c0 7 4.953 11.066 10.856 11.066 4.878 0 9.809-2.846 9.809-7.716 0-2.545-1.46-4.231-3.569-5.187m-6.33 4.855c-1.077 0-2.026-.512-2.026-1.453 0-1.483 1.822-1.934 3.606-1.934.678 0 1.34.045 1.927.173-.422 1.927-1.671 3.215-3.508 3.214Z"/></svg>
+      <button class="tb-btn tb-profile avatarbtn profile-avatar" onclick="showTab('accounts')" aria-label="Akun">?</button>
+    </div>
+
+    <div id="msg"></div>
+
+    <!-- ===== feed ===== -->
+    <div id="tab-feed">
+      <div class="feedhead">
+        <div class="ftitle">Untuk Anda</div>
+        <button class="refresh" onclick="loadFeed(true, true)" title="Muat Ulang" aria-label="Muat Ulang"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg></button>
+      </div>
+      <div id="feedList"></div>
+      <div id="feedSentinel" class="center">Memuat...</div>
+      <div class="center" style="padding:10px 0 24px"><button id="feedMoreBtn" class="btn secondary" onclick="loadFeed(false)">Muat lebih banyak</button></div>
+    </div>
+
+    <!-- ===== search ===== -->
+    <div id="tab-search" class="hidden">
+      <div class="searchbar">
+        <div class="srow">
+          <input type="text" id="searchInput" placeholder="Cari akun atau kata kunci..." autocomplete="off" onkeydown="if(event.key==='Enter')doSearch()">
+          <button class="btn" onclick="doSearch()">Cari</button>
+        </div>
+      </div>
+      <div id="searchResults"></div>
+    </div>
+
+    <!-- ===== profil akun ===== -->
+    <div id="tab-profile" class="hidden">
+      <div class="profile-head">
+        <button class="backbtn" onclick="showTab(lastTab||'feed')" aria-label="Kembali">←</button>
+        <div id="profileHead"></div>
+      </div>
+      <div class="profile-tabs">
+        <button id="ptab-posts" class="ptab on" onclick="switchProfileTab('posts')">Post</button>
+        <button id="ptab-replies" class="ptab" onclick="switchProfileTab('replies')">Balasan</button>
+      </div>
+      <div id="profileList"></div>
+      <div id="profileSentinel" class="muted center" style="padding:14px"></div>
+    </div>
+
+    <!-- ===== post baru (composer) ===== -->
+    <div id="tab-post" class="hidden">
+      <div class="composer">
+        <span class="avatar profile-avatar" id="composerAvatar">?</span>
+        <div class="cbody">
+          <div class="who" id="composerWho">@...</div>
+          <textarea id="postText" maxlength="500" placeholder="Mulai thread..." oninput="charCount(this,'postCount');togglePublish()"></textarea>
+          <div class="imgprev hidden" id="imgPrevWrap"><img id="imgPrev" alt=""><button type="button" onclick="clearPostImage()" aria-label="Hapus gambar">✕</button></div>
+          <div class="urlrow"><input type="text" id="postUrl" placeholder="Tempel URL (opsional) — https://..."></div>
+          <input type="file" id="postImage" accept="image/*" class="hidden" onchange="previewPostImage(this)">
+          <div class="cfoot">
+            <button class="iconbtn" onclick="document.getElementById('postImage').click()" title="Tambah gambar" aria-label="Tambah gambar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg></button>
+            <span class="charcount" style="margin-left:auto"><span id="postCount">0</span>/500</span>
+            <button class="btn" id="publishBtn" onclick="publishPost()" disabled>Posting</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== inbox ===== -->
+    <div id="tab-inbox" class="hidden">
+      <div class="panel">
+        <h2>Inbox</h2>
+        <div class="muted">Komen &amp; mention ke post kamu. Tiap item menampilkan post asal yang dikomentari, isi komennya, dan aksi yang bisa dilakukan.</div>
+      </div>
+      <div id="inboxList"></div>
+    </div>
+
+    <!-- ===== rules ===== -->
+    <div id="tab-rules" class="hidden">
+      <div class="panel">
+        <h2>Aturan Auto-Reply</h2>
+        <div class="muted">Auto-reply default MATI. Aktifkan di Pengaturan. Aturan hanya jalan untuk akun aktif. Template bisa pakai {author} untuk nama pengomentar.</div>
+        <label>Keyword (dicocokkan di isi komen)</label>
+        <input type="text" id="ruleKeyword" placeholder="misal: harga">
+        <label>Template balasan</label>
+        <textarea id="ruleTemplate" maxlength="500" placeholder="misal: Halo {author}, harganya..."></textarea>
+        <label>Maks balasan per hari untuk aturan ini</label>
+        <input type="number" id="ruleMax" value="20" min="1" max="100">
+        <div style="margin-top:14px"><button class="btn" onclick="addRule()">Tambah Aturan</button></div>
+        <div id="ruleList" style="margin-top:14px"></div>
+      </div>
+    </div>
+
+    <!-- ===== history ===== -->
+    <div id="tab-history" class="hidden">
+      <div class="panel">
+        <h2>Riwayat Aksi</h2>
+        <div id="historyFilterBar"></div>
+      </div>
+      <div class="panel" id="historyList"></div>
+    </div>
+
+    <!-- ===== settings ===== -->
+    <div id="tab-settings" class="hidden">
+      <div class="panel">
+        <h2>Pengaturan &amp; Batas Harian</h2>
+        <div class="muted">Batas ditegakkan server-side per akun per hari.</div>
+        <label><input type="checkbox" id="setAutoReply" style="width:auto"> Auto-reply aktif (default mati)</label>
+        <label>Maks post per hari</label>
+        <input type="number" id="setMaxPosts" min="1" max="250">
+        <label>Maks reply per hari</label>
+        <input type="number" id="setMaxReplies" min="1" max="1000">
+        <label>Maks like per hari</label>
+        <input type="number" id="setMaxLikes" min="1" max="1000">
+        <label>Jeda minimum antar aksi auto (detik)</label>
+        <input type="number" id="setMinDelay" min="5" max="300">
+        <div style="margin-top:14px"><button class="btn" onclick="saveSettings()">Simpan Pengaturan</button></div>
+      </div>
+    </div>
+
+    <!-- ===== accounts ===== -->
+    <div id="tab-accounts" class="hidden">
+      <div class="panel">
+        <h2>Tambah Akun</h2>
+        <div class="muted">Login pakai akun Instagram (Threads nempel ke IG). Password hanya dipakai sekali saat login — yang disimpan hanya token sesi, terenkripsi. Kunci 2FA juga hanya dipakai sekali saat login ini, tidak disimpan. Proxy (kalau diisi) disimpan terenkripsi dan dipakai buat semua aktivitas akun ini — supaya trafiknya keluar lewat IP proxy, bukan IP server.</div>
+        <div class="muted" style="margin-top:6px"><b>Catatan:</b> login pakai password saat ini diblokir Instagram dari server (429). Isi Proxy kalau kamu punya proxy sendiri — login jalan lewat proxy itu. Kalau tetap gagal, pakai login sessionid di bawah.</div>
+        <label>Username Instagram</label>
+        <input type="text" id="accUser" placeholder="username" autocomplete="off">
+        <label>Password</label>
+        <input type="password" id="accPass" placeholder="password" autocomplete="off">
+        <label>Kunci 2FA (secret key — isi hanya kalau akun pakai 2FA)</label>
+        <input type="text" id="accTotpKey" placeholder="kunci dari aplikasi Authenticator, bukan kode 6 digit" autocomplete="off">
+        <label>Proxy (opsional — disimpan terenkripsi, dipakai buat semua aktivitas akun ini)</label>
+        <input type="text" id="accProxy" placeholder="http://user:pass@host:port" autocomplete="off">
+        <div style="margin-top:8px"><button class="btn" id="testProxyBtn" onclick="testProxy()">Tes Proxy</button> <span id="proxyTestMsg" class="muted"></span></div>
+        <div style="margin-top:14px"><button class="btn" id="addAccBtn" onclick="addAccount()">Tambah &amp; Login</button></div>
+        <div id="accMsg" style="margin-top:12px"></div>
+      </div>
+      <div class="panel">
+        <h2>Login pakai sessionid</h2>
+        <div class="muted">Ambil sessionid dari browser kamu sendiri (IP kamu dipercaya Instagram), lalu tempel di sini. Sessionid hanya dipakai sekali — yang disimpan tetap hanya token sesi, terenkripsi.</div>
+        <div class="muted" style="margin-top:6px">Langkah: 1) Buka <b>instagram.com</b> di Chrome laptop &amp; login. 2) Tekan F12 → tab <b>Application</b> → <b>Cookies</b> → <b>instagram.com</b> → klik <b>sessionid</b>, salin isinya (panjang, mulai dengan angka). 3) Tempel di bawah.</div>
+        <label>Username Instagram (akun pemilik sessionid)</label>
+        <input type="text" id="accSessionUser" placeholder="username" autocomplete="off">
+        <label>Sessionid Instagram</label>
+        <input type="password" id="accSession" placeholder="tempel sessionid di sini" autocomplete="off">
+        <label>Proxy (opsional — disimpan terenkripsi, dipakai buat semua aktivitas akun ini)</label>
+        <input type="text" id="accSessionProxy" placeholder="http://user:pass@host:port" autocomplete="off">
+        <div style="margin-top:8px"><button class="btn" id="testProxySessBtn" onclick="testProxySess()">Tes Proxy</button> <span id="proxySessTestMsg" class="muted"></span></div>
+        <div style="margin-top:14px"><button class="btn" id="addSessBtn" onclick="addAccountBySession()">Tambah &amp; Login (sessionid)</button></div>
+        <div id="sessMsg" style="margin-top:12px"></div>
+      </div>
+      <div class="panel">
+        <h2>Daftar Akun Baru (tanpa browser)</h2>
+        <div class="muted">Daftarkan akun Instagram baru langsung dari aplikasi ini — tanpa buka browser. Kode OTP dikirim ke nomor HP (SMS) atau email, lalu kamu ketik di bawah. Akun baru langsung masuk Daftar Akun. Password hanya dipakai saat pendaftaran ini, tidak disimpan.</div>
+        <div class="muted" style="margin-top:6px"><b>Penting:</b> akun baru jangan langsung dipakai posting/komen otomatis — panaskan dulu manual beberapa hari (buka feed, like, follow) supaya tidak kena flag seperti Lily &amp; Noor.</div>
+        <label>Daftar pakai</label>
+        <select id="regContactType" onchange="toggleRegContact()">
+          <option value="phone">Nomor HP (kode via SMS)</option>
+          <option value="email">Email (kode via email)</option>
+        </select>
+        <div id="regPhoneRow">
+          <label>Nomor HP (dari SMSBower, format +62...)</label>
+          <input type="tel" id="regPhone" placeholder="+62812..." autocomplete="off">
+        </div>
+        <div id="regEmailRow" class="hidden">
+          <label>Email</label>
+          <input type="email" id="regEmail" placeholder="nama@email.com" autocomplete="off">
+        </div>
+        <label>Username Instagram yang diinginkan</label>
+        <input type="text" id="regUser" placeholder="username" autocomplete="off">
+        <label>Password akun baru (min. 6 karakter)</label>
+        <input type="password" id="regPass" placeholder="password" autocomplete="off">
+        <label>Nama lengkap</label>
+        <input type="text" id="regName" placeholder="Nama Lengkap" autocomplete="off">
+        <label>Tanggal lahir</label>
+        <input type="date" id="regDob" autocomplete="off">
+        <label>Proxy (opsional — sama seperti akun lain, disimpan terenkripsi)</label>
+        <input type="text" id="regProxy" placeholder="http://user:pass@host:port" autocomplete="off">
+        <div style="margin-top:14px"><button class="btn" id="regStartBtn" onclick="registerStart()">Kirim Kode</button></div>
+        <div id="regOtpBox" class="hidden" style="margin-top:14px">
+          <label>Kode OTP (6 digit)</label>
+          <input type="text" id="regCode" placeholder="123456" autocomplete="off" maxlength="6">
+          <div style="margin-top:10px"><button class="btn" id="regConfirmBtn" onclick="registerConfirm()">Buat Akun</button> <button class="btn" onclick="registerResend()">Kirim Ulang Kode</button></div>
+        </div>
+        <div id="regMsg" style="margin-top:12px"></div>
+      </div>
+      <div class="panel">
+        <h2>Daftar Akun</h2>
+        <div id="accountList"></div>
+      </div>
+      <div class="panel">
+        <h2>Riwayat Refresh Token</h2>
+        <div class="muted">Setiap kali token sesi (sessionid) sebuah akun berganti — baik karena rotasi otomatis dari Instagram, sinkronisasi extension Chrome, maupun tempel manual — dicatat di sini. Nilai token/sessionid tidak pernah ditampilkan.</div>
+        <div id="tokenRefreshSummary" style="margin-top:10px"></div>
+        <div id="tokenRefreshList" style="margin-top:10px"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- bottom nav (mobile) -->
+<nav class="bottomnav">
+  <button class="navbtn on" data-tab="feed" onclick="showTab('feed')" aria-label="Feed"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/><path d="M9 21v-6h6v6"/></svg></button>
+  <button class="navbtn" data-tab="search" onclick="showTab('search')" aria-label="Cari"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></button>
+  <button class="navbtn" data-tab="history" onclick="showTab('history')" aria-label="Riwayat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></button>
+  <button class="navbtn" data-tab="post" onclick="showTab('post')" aria-label="Buat Thread"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+  <button class="navbtn" data-tab="inbox" onclick="showTab('inbox')" aria-label="Inbox"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg></button>
+  <button class="avatarbtn profile-avatar" onclick="showTab('accounts')" aria-label="Akun">?</button>
+</nav>
+
+<div id="toast"></div>
+
+<script>
+let accounts = [];
+let historyFilter = null; // {id, username} — filter riwayat per akun, null = semua
+let activeId = null;
+let feedMaxId = null;
+let feedLoading = false;
+let feedDone = false;
+let currentTab = 'feed';
+
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function showMsg(html, cls){ const el=document.getElementById('msg'); el.innerHTML = html ? `<div class="${cls||'err'}">${html}</div>` : ''; }
+function showAccMsg(html, cls){ const el=document.getElementById('accMsg'); el.innerHTML = html ? `<div class="${cls||'err'}">${html}</div>` : ''; }
+function showSessMsg(html, cls){ const el=document.getElementById('sessMsg'); el.innerHTML = html ? `<div class="${cls||'err'}">${html}</div>` : ''; }
+function charCount(ta, id){ document.getElementById(id).textContent = ta.value.length; }
+function togglePublish(){ document.getElementById('publishBtn').disabled = !document.getElementById('postText').value.trim(); }
+
+let toastTimer = null;
+function toast(msg){
+  const t = document.getElementById('toast');
+  t.innerHTML = msg; t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=>t.classList.remove('show'), 4000);
+}
+
+function timeAgo(ts){
+  if (!ts) return '';
+  const s = Math.max(0, Math.floor(Date.now()/1000) - Number(ts));
+  if (s < 60) return 'baru saja';
+  const m = Math.floor(s/60);
+  if (m < 60) return m + 'mnt';
+  const h = Math.floor(m/60);
+  if (h < 24) return h + 'j';
+  const d = Math.floor(h/24);
+  if (d < 7) return d + 'h';
+  const w = Math.floor(d/7);
+  if (w < 5) return w + 'mgg';
+  const dt = new Date(Number(ts)*1000);
+  return dt.getDate() + ' ' + ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'][dt.getMonth()];
+}
+
+function avatarHtml(a, cls){
+  const u = (a && a.username) || '?';
+  if (a && a.pic) return `<img class="${cls||'avatar'}" src="${esc(a.pic)}" alt="">`;
+  return `<span class="${cls||'avatar'}">${esc(u.charAt(0).toUpperCase())}</span>`;
+}
+
+/* ---------- dropdown menu ---------- */
+let openMenuEl = null;
+function closeMenu(){ if (openMenuEl) { openMenuEl.remove(); openMenuEl = null; } }
+document.addEventListener('click', e=>{ if (openMenuEl && !openMenuEl.contains(e.target)) closeMenu(); });
+function openMenu(anchor, items){
+  closeMenu();
+  const r = anchor.getBoundingClientRect();
+  const m = document.createElement('div');
+  m.className = 'menu';
+  m.innerHTML = items.map((it,i)=>`<button type="button" data-i="${i}" class="${it.danger?'danger':''}">${esc(it.label)}</button>`).join('');
+  document.body.appendChild(m);
+  const mw = m.offsetWidth, mh = m.offsetHeight;
+  let x = Math.min(r.right - mw, window.innerWidth - mw - 10);
+  let y = r.bottom + 6;
+  if (y + mh > window.innerHeight - 10) y = Math.max(10, r.top - mh - 6);
+  m.style.left = Math.max(10, x) + 'px';
+  m.style.top = y + 'px';
+  m.addEventListener('click', e=>{
+    const b = e.target.closest('button'); if (!b) return;
+    closeMenu();
+    items[Number(b.dataset.i)].onClick();
+  });
+  openMenuEl = m;
+}
+function toggleMoreMenu(btn){
+  if (openMenuEl) { closeMenu(); return; }
+  openMenu(btn, [
+    {label: 'Aturan Auto-Reply', onClick: ()=>showTab('rules')},
+    {label: 'Riwayat', onClick: ()=>showTab('history')},
+    {label: 'Pengaturan', onClick: ()=>showTab('settings')},
+    {label: 'Akun', onClick: ()=>showTab('accounts')},
+    {label: 'Keluar', danger: true, onClick: logout},
+  ]);
+}
+function postMenu(btn, p){
+  const a = p.author || {};
+  openMenu(btn, [
+    {label: 'Ikuti @' + (a.username||'?'), onClick: ()=>{ if (a.pk) followUser(a.pk, a.username); }},
+    {label: 'Lihat Balasan', onClick: ()=>showDetail(p.id)},
+    {label: 'Salin tautan', onClick: ()=>copyPostLink(p)},
+  ]);
+}
+async function copyPostLink(p){
+  const url = p.code ? 'https://www.threads.net/t/' + p.code : ('https://www.threads.net/post/' + p.id);
+  try { await navigator.clipboard.writeText(url); toast('Tautan disalin'); }
+  catch(e){ toast(url); }
+}
+
+async function api(path, opts){
+  const r = await fetch(path, Object.assign({headers:{'Content-Type':'application/json'}}, opts||{}));
+  if (r.status === 401) { location.href = '/'; return null; }
+  let j = null;
+  const txt = await r.text();
+  try { j = JSON.parse(txt); } catch(e) { const t = txt.replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim().slice(0,200); j = {ok:false, error: t || 'respon server tidak bisa dibaca'}; }
+  if (!r.ok && j) j._http = r.status;
+  return j;
+}
+
+function logout(){ document.cookie = 'threads_session=; Path=/; Max-Age=0'; location.href='/'; }
+
+function statusBadge(a){
+  if (a.status === 'ok') return '<span class="badge ok">OK</span>';
+  if (a.status === 'expired') return '<span class="badge bad">TOKEN KEDALUWARSA</span>';
+  if (a.status === 'error') return '<span class="badge bad">ERROR</span>';
+  return '<span class="badge warn">BELUM DICEK</span>';
+}
+
+async function loadAccounts(){
+  const j = await api('/api/accounts');
+  if (!j || !j.ok) { showMsg(esc((j&&j.error)||'gagal memuat akun')); return; }
+  accounts = j.accounts || [];
+  const active = accounts.find(a=>a.active) || accounts[0];
+  activeId = active ? active.id : null;
+  const initial = active ? active.username.charAt(0).toUpperCase() : '?';
+  document.querySelectorAll('.profile-avatar').forEach(el=>{
+    el.title = active ? '@'+active.username : 'Akun';
+    if (active && active.pic) { el.innerHTML = `<img src="${esc(active.pic)}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`; }
+    else { el.textContent = initial; }
+  });
+  const who = document.getElementById('composerWho');
+  if (who) who.textContent = active ? '@' + active.username : '@...';
+  document.getElementById('accountList').innerHTML = accounts.length ? accounts.map(a=>`
+    <div class="acct-row">
+      <span class="acct-click" onclick="showAccountHistory('${a.id}','${esc(a.username)}')" title="Lihat riwayat @${esc(a.username)}">
+        <span id="acctPic-${a.id}">${avatarHtml({username: a.username, pic: a.pic})}</span>
+        <span style="min-width:0"><strong>@${esc(a.username)}</strong> ${statusBadge(a)}<br>
+        <span class="muted small">${a.active?'Akun aktif':''}${a.status_detail?' — '+esc(a.status_detail):''}</span><br>
+        <span class="muted small">Proxy: ${a.proxy_set ? 'aktif ('+esc(a.proxy_host||'terpasang')+')' : 'tidak pakai proxy'}</span></span>
+      </span>
+      <div class="row">
+        ${a.active?'':'<button class="btn secondary btn-sm" onclick="selectAccount(\''+a.id+'\')">Pilih</button>'}
+        <button class="btn danger btn-sm" onclick="deleteAccount('${a.id}')">Hapus</button>
+      </div>
+    </div>
+    <div class="acct-proxy-row" style="margin:6px 0 12px 0;display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+      <input type="text" id="proxy-${a.id}" placeholder="http://user:pass@host:port — proxy baru buat @${esc(a.username)}" autocomplete="off" style="flex:1;min-width:200px">
+      <button class="btn secondary btn-sm" onclick="setAccountProxy('${a.id}')">Pasang proxy</button>
+      ${a.proxy_set?'<button class="btn secondary btn-sm" onclick="removeAccountProxy(\''+a.id+'\')">Lepas proxy</button>':''}
+      <span id="proxyMsg-${a.id}" class="muted small"></span>
+    </div>`).join('') : '<div class="muted">Belum ada akun. Tambah akun di atas.</div>';
+  // Isi foto profil yang belum tersimpan (satu per satu, di latar belakang).
+  accounts.filter(a=>!a.pic).forEach(a=>fetchAccountPic(a.id));
+}
+
+async function fetchAccountPic(id){
+  try {
+    const j = await api('/api/accounts/'+id+'/pic', {method:'POST'});
+    if (j && j.ok && j.pic) {
+      const a = accounts.find(x=>x.id===id);
+      if (a) a.pic = j.pic;
+      const el = document.getElementById('acctPic-'+id);
+      if (el && a) el.innerHTML = avatarHtml({username: a.username, pic: j.pic});
+    }
+  } catch(e) { /* foto gagal — huruf awal tetap tampil */ }
+}
+
+function showAccountHistory(id, username){
+  historyFilter = {id, username};
+  showTab('history');
+}
+
+function clearHistoryFilter(){
+  historyFilter = null;
+  loadHistory();
+}
+
+async function selectAccount(id){
+  if (!id) return;
+  const j = await api('/api/accounts/'+id+'/select', {method:'POST'});
+  if (j && j.ok) { await loadAccounts(); if (currentTab==='feed') loadFeed(true); if (currentTab==='inbox') loadInbox(); if (currentTab==='rules') loadRules(); }
+  else showMsg(esc(j&&j.error||'gagal memilih akun'));
+}
+
+async function deleteAccount(id){
+  if (!confirm('Hapus akun ini? Token tersimpan ikut dihapus.')) return;
+  const j = await api('/api/accounts/'+id, {method:'DELETE'});
+  if (j && j.ok) { await loadAccounts(); } else showMsg(esc(j&&j.error||'gagal menghapus akun'));
+}
+
+async function testProxy(){
+  const px = document.getElementById('accProxy').value.trim();
+  const msg = document.getElementById('proxyTestMsg');
+  if (!px) { msg.textContent = 'Isi dulu kolom Proxy.'; return; }
+  const btn = document.getElementById('testProxyBtn');
+  btn.disabled = true; btn.textContent = 'Mengetes...';
+  msg.textContent = '';
+  const j = await api('/api/test-proxy', {method:'POST', body: JSON.stringify({proxy:px})});
+  btn.disabled = false; btn.textContent = 'Tes Proxy';
+  msg.textContent = (j && j.detail) || 'tidak diketahui';
+  msg.style.color = (j && j.ok) ? 'green' : 'red';
+}
+
+async function testProxySess(){
+  const px = document.getElementById('accSessionProxy').value.trim();
+  const msg = document.getElementById('proxySessTestMsg');
+  if (!px) { msg.textContent = 'Isi dulu kolom Proxy.'; return; }
+  const btn = document.getElementById('testProxySessBtn');
+  btn.disabled = true; btn.textContent = 'Mengetes...';
+  msg.textContent = '';
+  const j = await api('/api/test-proxy', {method:'POST', body: JSON.stringify({proxy:px})});
+  btn.disabled = false; btn.textContent = 'Tes Proxy';
+  msg.textContent = (j && j.detail) || 'tidak diketahui';
+  msg.style.color = (j && j.ok) ? 'green' : 'red';
+}
+
+async function setAccountProxy(id){
+  const inp = document.getElementById('proxy-'+id);
+  const msg = document.getElementById('proxyMsg-'+id);
+  const px = inp ? inp.value.trim() : '';
+  if (!px) { msg.textContent = 'Isi dulu proxy-nya.'; return; }
+  msg.textContent = 'Mengecek proxy dulu... (bisa 10-20 detik)';
+  msg.style.color = '';
+  const j = await api('/api/accounts/'+id+'/proxy', {method:'POST', body: JSON.stringify({proxy:px})});
+  if (j && j.ok) {
+    msg.textContent = 'Proxy AKTIF & dipasang' + (j.exit_ip ? ' — Exit IP: ' + j.exit_ip + '.' : '.') + (j.applied ? '' : ' (aktif saat sesi dipulihkan berikutnya).');
+    msg.style.color = 'green';
+    await loadAccounts();
+  } else {
+    msg.textContent = 'Proxy TIDAK dipasang: ' + esc((j&&j.error)||'tidak diketahui');
+    msg.style.color = 'red';
+  }
+}
+
+async function removeAccountProxy(id){
+  const msg = document.getElementById('proxyMsg-'+id);
+  if (!confirm('Lepas proxy dari akun ini? Trafiknya kembali lewat IP server.')) return;
+  msg.textContent = 'Melepas proxy...';
+  const j = await api('/api/accounts/'+id+'/proxy', {method:'POST', body: JSON.stringify({proxy:''})});
+  if (j && j.ok) {
+    msg.textContent = 'Proxy dilepas.';
+    msg.style.color = 'green';
+    await loadAccounts();
+  } else {
+    msg.textContent = 'Gagal: ' + esc((j&&j.error)||'tidak diketahui');
+    msg.style.color = 'red';
+  }
+}
+
+async function addAccount(){
+  const u = document.getElementById('accUser').value.trim();
+  const p = document.getElementById('accPass').value;
+  const k = document.getElementById('accTotpKey').value.trim();
+  const px = document.getElementById('accProxy').value.trim();
+  if (!u || !p) { showAccMsg('Username dan password wajib diisi.'); return; }
+  const btn = document.getElementById('addAccBtn');
+  btn.disabled = true; btn.textContent = 'Login... (bisa 1-2 menit)';
+  showAccMsg('');
+  const j = await api('/api/accounts', {method:'POST', body: JSON.stringify({username:u, password:p, totp_key:k, proxy:px})});
+  btn.disabled = false; btn.textContent = 'Tambah & Login';
+  document.getElementById('accPass').value = '';
+  document.getElementById('accTotpKey').value = '';
+  document.getElementById('accProxy').value = '';
+  if (j && j.ok) {
+    showAccMsg('Akun <b>@'+esc(u)+'</b> berhasil ditambahkan dan login OK.', 'ok');
+    await loadAccounts();
+  } else if (j && j.need_2fa) {
+    showAccMsg('<b>2FA dibutuhkan.</b> '+esc(j.error)+' Masukkan kunci 2FA (secret key) ke kolom Kunci 2FA, lalu tekan Tambah &amp; Login lagi (password harus diisi ulang).');
+    document.getElementById('accTotpKey').focus();
+  } else {
+    showAccMsg('<b>Login gagal.</b> Pesan dari Instagram:<br>'+esc((j&&j.error)||'tidak diketahui'));
+  }
+}
+
+async function addAccountBySession(){
+  const s = document.getElementById('accSession').value.trim();
+  const u = document.getElementById('accSessionUser').value.trim();
+  const px = document.getElementById('accSessionProxy').value.trim();
+  if (s.length < 30) { showSessMsg('Sessionid tidak valid — salin ulang dari browser (isinya panjang, mulai dengan angka).'); return; }
+  const btn = document.getElementById('addSessBtn');
+  btn.disabled = true; btn.textContent = 'Login... (bisa 1-2 menit)';
+  showSessMsg('');
+  const j = await api('/api/accounts', {method:'POST', body: JSON.stringify({sessionid:s, username:u, proxy:px})});
+  btn.disabled = false; btn.textContent = 'Tambah & Login (sessionid)';
+  document.getElementById('accSession').value = '';
+  document.getElementById('accSessionProxy').value = '';
+  if (j && j.ok) {
+    showSessMsg('Akun <b>@'+esc(j.account.username)+'</b> berhasil ditambahkan dan login OK.', 'ok');
+    await loadAccounts();
+  } else {
+    showSessMsg('<b>Login gagal.</b> Pesan dari Instagram:<br>'+esc((j&&j.error)||'tidak diketahui'));
+  }
+}
+
+function showRegMsg(html, cls){ const el=document.getElementById('regMsg'); el.innerHTML = html ? `<div class="${cls||'err'}">${html}</div>` : ''; }
+function toggleRegContact(){
+  const t = document.getElementById('regContactType').value;
+  document.getElementById('regPhoneRow').classList.toggle('hidden', t !== 'phone');
+  document.getElementById('regEmailRow').classList.toggle('hidden', t !== 'email');
+}
+let _regCtx = null; // {username, password, proxy} — disimpan di halaman selama pendaftaran, tidak dikirim ke mana-mana
+
+async function registerStart(){
+  const ctype = document.getElementById('regContactType').value;
+  const phone = document.getElementById('regPhone').value.trim();
+  const email = document.getElementById('regEmail').value.trim();
+  const u = document.getElementById('regUser').value.trim();
+  const p = document.getElementById('regPass').value;
+  const name = document.getElementById('regName').value.trim();
+  const dob = document.getElementById('regDob').value;
+  const px = document.getElementById('regProxy').value.trim();
+  const contact = ctype === 'email' ? email : phone;
+  if (!contact || !u || !p) { showRegMsg((ctype === 'email' ? 'Email' : 'Nomor HP') + ', username, dan password wajib diisi.'); return; }
+  if (!dob) { showRegMsg('Tanggal lahir wajib diisi.'); return; }
+  const parts = dob.split('-');
+  const btn = document.getElementById('regStartBtn');
+  btn.disabled = true; btn.textContent = 'Mengirim kode... (bisa 1-2 menit)';
+  showRegMsg('');
+  const body = {username:u, password:p, full_name:name, day:+parts[2], month:+parts[1], year:+parts[0], proxy:px, contact_type:ctype};
+  if (ctype === 'email') body.email = email; else body.phone = phone;
+  const j = await api('/api/register/start', {method:'POST', body: JSON.stringify(body)});
+  btn.disabled = false; btn.textContent = 'Kirim Kode';
+  if (j && j.ok && j.waiting_otp) {
+    _regCtx = {username:u, password:p, proxy:px};
+    document.getElementById('regOtpBox').classList.remove('hidden');
+    const st = ctype === 'email' ? j.email_send : j.sms_send;
+    const where = ctype === 'email' ? 'email <b>'+esc(j.email||email)+'</b>' : 'nomor <b>'+esc(j.phone||phone)+'</b>';
+    let note;
+    if (st === 'requested') {
+      note = ctype === 'email'
+        ? 'Permintaan kode dikirim ke ' + where + ' — cek inbox (dan folder spam). Kalau tidak datang dalam beberapa menit, tekan Kirim Ulang Kode.'
+        : 'Permintaan kode dikirim ke ' + where + ' — cek SMS. Kalau tidak datang dalam beberapa menit, tekan Kirim Ulang Kode.';
+    } else {
+      note = 'Pengiriman kode belum terkonfirmasi — kalau kode tidak datang, tekan Kirim Ulang Kode.';
+    }
+    showRegMsg('<b>'+esc(note)+'</b> Masukkan kode 6 digit, lalu tekan Buat Akun.', 'ok');
+    document.getElementById('regCode').focus();
+  } else {
+    showRegMsg('<b>Pendaftaran gagal.</b> Pesan dari Instagram:<br>'+esc((j&&j.error)||'tidak diketahui'));
+  }
+}
+
+async function registerConfirm(){
+  if (!_regCtx) { showRegMsg('Mulai lagi dari Kirim Kode.'); return; }
+  const code = document.getElementById('regCode').value.trim();
+  if (!code) { showRegMsg('Masukkan kode OTP dulu.'); return; }
+  const btn = document.getElementById('regConfirmBtn');
+  btn.disabled = true; btn.textContent = 'Membuat akun... (bisa 1-2 menit)';
+  showRegMsg('');
+  const j = await api('/api/register/confirm', {method:'POST', body: JSON.stringify({username:_regCtx.username, code, password:_regCtx.password, proxy:_regCtx.proxy})});
+  btn.disabled = false; btn.textContent = 'Buat Akun';
+  if (j && j.ok) {
+    showRegMsg('Akun <b>@'+esc(j.account.username)+'</b> berhasil dibuat dan langsung masuk Daftar Akun.', 'ok');
+    document.getElementById('regOtpBox').classList.add('hidden');
+    document.getElementById('regPass').value = '';
+    document.getElementById('regProxy').value = '';
+    _regCtx = null;
+    await loadAccounts();
+  } else {
+    showRegMsg('<b>Gagal membuat akun.</b> Pesan dari Instagram:<br>'+esc((j&&j.error)||'tidak diketahui')+'<br>Coba lagi — kalau kode salah, ketik ulang kodenya.');
+  }
+}
+
+async function registerResend(){
+  if (!_regCtx) { showRegMsg('Mulai lagi dari Kirim Kode.'); return; }
+  showRegMsg('Mengirim ulang kode...');
+  const j = await api('/api/register/resend', {method:'POST', body: JSON.stringify({username:_regCtx.username, proxy:_regCtx.proxy})});
+  if (j && j.ok) {
+    showRegMsg('Permintaan kirim ulang dikirim — cek inbox/SMS (dan spam). Kalau kode tidak datang, tunggu sebentar lalu coba lagi.', 'ok');
+  } else {
+    showRegMsg('<b>Gagal kirim ulang.</b> '+esc((j&&j.error)||'tidak diketahui'));
+  }
+}
+
+// ---------------- feed ----------------
+function postCard(p, inDetail){
+  const a = p.author || {};
+  const liked = p.has_liked;
+  const showLine = (p.reply_count||0) > 0 || !!p.reply_preview;
+  const rp = p.reply_preview;
+  const rpA = rp && rp.author ? rp.author : null;
+  return `<div class="post" data-post="${p.id}">
+    <div class="acol">
+      <span style="cursor:pointer" onclick="openProfile('${a.pk||''}', '${esc(a.username||'')}', '${esc(a.full_name||'')}', '${esc(a.pic||'')}', ${a.verified?1:0})">${avatarHtml(a)}</span>
+      ${showLine?'<div class="threadline"></div>':''}
+    </div>
+    <div class="pbody">
+      <div class="phead">
+        <span class="username" style="cursor:pointer" onclick="openProfile('${a.pk||''}', '${esc(a.username||'')}', '${esc(a.full_name||'')}', '${esc(a.pic||'')}', ${a.verified?1:0})">${esc(a.username||'?')}</span>
+        ${a.verified?'<span class="verified">✓</span>':''}
+        <span class="time">${timeAgo(p.taken_at)}</span>
+        <button class="morebtn" onclick="event.stopPropagation();postMenu(this, window.__posts['${p.id}'])" aria-label="Lainnya"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg></button>
+      </div>
+      <div class="ptext" onclick="showDetail('${p.id}')">${esc(p.text||'')}</div>
+      ${p.image_url?`<img class="pimg" src="${esc(p.image_url)}" loading="lazy" onclick="showDetail('${p.id}')">`:''}
+      ${rp?`<div class="reply-preview" onclick="showDetail('${p.id}')">${avatarHtml(rpA)}<span><b>${esc(rpA?rpA.username:'?')}</b> · ${esc((rp.text||'').slice(0,80))}</span></div>`:''}
+      <div class="actions">
+        <button class="act" onclick="event.stopPropagation();toggleReplyBox('${p.id}');showDetail('${p.id}')" aria-label="Balas"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg><span class="cnt">${p.reply_count||''}</span></button>
+        <button class="act" onclick="event.stopPropagation();repostPost('${p.id}')" aria-label="Repost"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg><span class="cnt">${p.repost_count||''}</span></button>
+        <button class="act" onclick="event.stopPropagation();copyPostLink(window.__posts['${p.id}'])" aria-label="Bagikan"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></button>
+      </div>
+      <div class="replybox hidden" id="rb-${p.id}">
+        <textarea id="rt-${p.id}" maxlength="500" placeholder="Balas ke @${esc(a.username||'')}..."></textarea>
+        <div class="row" style="margin-top:8px"><button class="btn btn-sm" onclick="sendReply('${p.id}')">Balas</button></div>
+      </div>
+      <div class="detail hidden" id="dt-${p.id}"></div>
+    </div>
+  </div>`;
+}
+
+window.__posts = {};
+function toggleReplyBox(id){
+  const box = document.getElementById('rb-'+id);
+  box.classList.toggle('hidden');
+  if (!box.classList.contains('hidden')) { const ta = document.getElementById('rt-'+id); if (ta) ta.focus(); }
+}
+
+function skeletonPosts(n){
+  let h = '';
+  for (let i=0;i<(n||3);i++) h += `<div class="skel-post"><div class="skel skel-av"></div><div class="skel-body"><div class="skel skel-line" style="width:38%"></div><div class="skel skel-line" style="width:92%"></div><div class="skel skel-line" style="width:74%"></div></div></div>`;
+  return h;
+}
+
+async function loadFeed(reset, fresh){
+  if (feedLoading) return;
+  if (reset) { feedMaxId = null; feedDone = false; document.getElementById('feedList').innerHTML = skeletonPosts(3); }
+  if (feedDone) return;
+  feedLoading = true;
+  const s = document.getElementById('feedSentinel');
+  s.textContent = 'Memuat...';
+  let q = feedMaxId ? '?max_id='+encodeURIComponent(feedMaxId) : '';
+  if (fresh) q += (q ? '&' : '?') + 'fresh=1';
+  const j = await api('/api/feed'+q);
+  feedLoading = false;
+  if (!j || !j.ok) {
+    if (reset) document.getElementById('feedList').innerHTML = '';
+    s.textContent = '';
+    showMsg('<b>Feed gagal dimuat.</b><br>'+esc((j&&j.error)||'tidak diketahui'));
+    return;
+  }
+  showMsg('');
+  const list = document.getElementById('feedList');
+  if (reset) list.innerHTML = '';
+  (j.items||[]).forEach(p=>{ window.__posts[p.id] = p; list.insertAdjacentHTML('beforeend', postCard(p)); });
+  feedMaxId = j.next_max_id || null;
+  feedDone = !j.more_available || !feedMaxId;
+  s.textContent = feedDone ? '— habis —' : 'Scroll ke bawah untuk memuat lagi';
+  const mb = document.getElementById('feedMoreBtn');
+  if (mb) mb.style.display = feedDone ? 'none' : '';
+  if (!(j.items||[]).length && !feedMaxId) s.textContent = 'Feed kosong.';
+}
+
+const sentinelObs = new IntersectionObserver(es=>{
+  if (es[0].isIntersecting && currentTab==='feed') loadFeed(false);
+},{rootMargin:'800px'});
+sentinelObs.observe(document.getElementById('feedSentinel'));
+
+const profileObs = new IntersectionObserver(es=>{
+  if (es[0].isIntersecting && currentTab==='profile') loadProfile();
+},{rootMargin:'300px'});
+profileObs.observe(document.getElementById('profileSentinel'));
+
+async function repostPost(id){
+  if (!confirm('Repost thread ini ke akun aktif?')) return;
+  const j = await api('/api/posts/'+id+'/repost', {method:'POST'});
+  if (j && j.ok) toast('Repost berhasil'); else showMsg(esc(j&&j.error||'gagal repost'));
+}
+async function followUser(uid, uname){
+  const j = await api('/api/users/'+uid+'/follow', {method:'POST'});
+  if (j && j.ok) toast('Berhasil mengikuti @'+uname); else showMsg(esc(j&&j.error||'gagal follow'));
+}
+async function sendReply(id){
+  const ta = document.getElementById('rt-'+id);
+  const text = ta.value.trim();
+  if (!text) return;
+  const j = await api('/api/posts/'+id+'/reply', {method:'POST', body: JSON.stringify({text})});
+  if (j && j.ok) {
+    ta.value='';
+    toast('Balasan terkirim' + (j.link ? ` · <a href="${esc(j.link)}" target="_blank" rel="noopener" style="color:#fff;text-decoration:underline">Lihat ↗</a>` : ''));
+    showDetail(id);
+  } else showMsg(esc(j&&j.error||'gagal membalas'));
+}
+async function showDetail(id){
+  const box = document.getElementById('dt-'+id);
+  if (!box) return;
+  if (!box.classList.contains('hidden') && box.dataset.loaded) { box.classList.add('hidden'); return; }
+  box.classList.remove('hidden');
+  box.innerHTML = '<div class="muted" style="padding:8px 0">Memuat balasan...</div>';
+  const j = await api('/api/post/'+id);
+  if (!j || !j.ok) { box.innerHTML = '<div class="err" style="margin:8px 0">'+esc((j&&j.error)||'gagal')+'</div>'; return; }
+  const rs = j.replies||[];
+  box.dataset.loaded = '1';
+  box.innerHTML = rs.length ? rs.map(p=>{ window.__posts[p.id]=p; return postCard(p, true); }).join('') : '<div class="muted" style="padding:8px 0">Belum ada balasan.</div>';
+}
+
+// ---------------- search ----------------
+async function doSearch(){
+  const q = document.getElementById('searchInput').value.trim();
+  const box = document.getElementById('searchResults');
+  if (!q) { box.innerHTML = ''; return; }
+  // Render dua bagian secara terpisah supaya akun yang cepat tidak
+  // tertahan menunggu pencarian post (yang menelusuri beberapa
+  // halaman feed dan bisa makan belasan detik).
+  box.innerHTML = '<div class="search-sec">Post</div><div id="searchPosts">' + skeletonPosts(2) + '</div>'
+    + '<div class="search-sec">Akun</div><div id="searchUsers">' + skeletonPosts(2) + '</div>';
+  const uBox = document.getElementById('searchUsers');
+  const pBox = document.getElementById('searchPosts');
+  // Akun dulu (cepat).
+  api('/api/search-user?q='+encodeURIComponent(q)).then(uj=>{
+    const users = (uj && uj.ok) ? (uj.users||[]) : [];
+    if (!users.length) {
+      uBox.innerHTML = (uj && !uj.ok)
+        ? '<div class="muted" style="padding:0 16px 10px">Pencarian akun gagal: ' + esc(uj.error||'') + '</div>'
+        : '<div class="muted" style="padding:0 16px 10px">Tidak ada akun yang cocok.</div>';
+      return;
+    }
+    const row = u=>`
+      <div class="user-row" onclick="openProfile('${u.pk}', '${esc(u.username)}', '${esc(u.full_name||'')}', '${esc(u.pic||'')}', ${u.verified?1:0})">
+        ${avatarHtml({username: u.username, pic: u.pic})}
+        <div style="flex:1;min-width:0"><div class="uname">@${esc(u.username)}${u.verified?' <span style="color:#0095f6">✓</span>':''}</div>
+        <div class="fname">${esc(u.full_name||'')}</div></div>
+        <button class="btn secondary btn-sm" onclick="event.stopPropagation();followUser('${u.pk}', '${esc(u.username)}')">Ikuti</button>
+      </div>`;
+    window.__searchUsers = users;
+    window.__searchUserRow = row;
+    let h = users.slice(0, 5).map(row).join('');
+    if (users.length > 5) {
+      h += `<div class="center" style="padding:10px"><button class="btn secondary" onclick="expandSearchUsers(this)">Lihat semua ${users.length} akun</button></div>`;
+    }
+    uBox.innerHTML = h;
+  });
+  // Post (lebih lambat — menelusuri feed).
+  api('/api/feed/search?q='+encodeURIComponent(q)).then(fj=>{
+    const posts = (fj && fj.ok) ? (fj.items||[]) : [];
+    if (posts.length) {
+      pBox.innerHTML = posts.map(p=>{ window.__posts[p.id]=p; return postCard(p); }).join('');
+    } else if (fj && !fj.ok) {
+      pBox.innerHTML = '<div class="muted" style="padding:0 16px 10px">Pencarian post gagal: ' + esc(fj.error||'') + '</div>';
+    } else {
+      pBox.innerHTML = '<div class="muted" style="padding:0 16px 10px">Tidak ada post di feed yang cocok dengan &ldquo;' + esc(q) + '&rdquo;. Pencarian post hanya mencakup feed yang sudah dimuat (bukan semua Threads).</div>';
+    }
+  });
+}
+
+// ---------------- profile ----------------
+let profileUser = null, profileTab = 'posts', profileMaxId = null, profileDone = false, profileLoading = false, lastTab = 'feed';
+
+function expandSearchUsers(btn){
+  const rest = (window.__searchUsers||[]).slice(5);
+  const row = window.__searchUserRow;
+  if (!rest.length || !row) return;
+  const d = document.createElement('div');
+  d.innerHTML = rest.map(row).join('');
+  btn.parentElement.before(d);
+  btn.remove();
+}
+
+function openProfile(pk, username, fullName, pic, verified){
+  profileUser = { pk, username, fullName, pic, verified: !!verified };
+  lastTab = currentTab;
+  document.getElementById('profileHead').innerHTML = `
+    <div class="pinfo">
+      ${avatarHtml({username, pic})}
+      <div style="flex:1;min-width:0">
+        <div class="pname">@${esc(username)}${verified?' <span style="color:#0095f6">✓</span>':''}</div>
+        <div class="pfull">${esc(fullName||'')}</div>
+      </div>
+    </div>
+    <div class="pacts">
+      <button class="btn" onclick="followUser('${pk}', '${esc(username)}')">Ikuti</button>
+      <a class="btn secondary" href="https://www.threads.net/@${esc(username)}" target="_blank" rel="noopener">Buka di Threads</a>
+    </div>`;
+  switchProfileTab('posts');
+  showTab('profile');
+}
+
+function switchProfileTab(tab){
+  profileTab = tab;
+  document.getElementById('ptab-posts').classList.toggle('on', tab==='posts');
+  document.getElementById('ptab-replies').classList.toggle('on', tab==='replies');
+  profileMaxId = null; profileDone = false;
+  document.getElementById('profileList').innerHTML = skeletonPosts(3);
+  document.getElementById('profileSentinel').textContent = '';
+  loadProfile();
+}
+
+async function loadProfile(){
+  if (!profileUser || profileLoading || profileDone) return;
+  profileLoading = true;
+  const s = document.getElementById('profileSentinel');
+  s.textContent = 'Memuat...';
+  let url = '/api/profile/' + encodeURIComponent(profileUser.pk) + '?tab=' + profileTab;
+  if (profileMaxId) url += '&max_id=' + encodeURIComponent(profileMaxId);
+  const j = await api(url);
+  profileLoading = false;
+  if (!j || !j.ok) {
+    s.textContent = '';
+    showMsg('<b>Profil gagal dimuat.</b><br>' + esc((j&&j.error)||'tidak diketahui'));
+    return;
+  }
+  showMsg('');
+  const list = document.getElementById('profileList');
+  if (!profileMaxId) list.innerHTML = '';
+  (j.items||[]).forEach(p=>{ window.__posts[p.id]=p; list.insertAdjacentHTML('beforeend', postCard(p)); });
+  profileMaxId = j.next_max_id || null;
+  profileDone = !j.more_available || !profileMaxId;
+  s.textContent = profileDone ? ((j.items||[]).length || profileMaxId ? '— habis —' : 'Belum ada post.') : 'Scroll ke bawah untuk memuat lagi';
+  if (!(j.items||[]).length && !profileMaxId) s.textContent = profileTab==='posts' ? 'Belum ada post.' : 'Belum ada balasan.';
+}
+
+// ---------------- publish ----------------
+function previewPostImage(input){
+  const f = input.files && input.files[0];
+  const wrap = document.getElementById('imgPrevWrap');
+  if (!f) { wrap.classList.add('hidden'); return; }
+  const img = document.getElementById('imgPrev');
+  img.src = URL.createObjectURL(f);
+  wrap.classList.remove('hidden');
+}
+function clearPostImage(){
+  document.getElementById('postImage').value = '';
+  document.getElementById('imgPrevWrap').classList.add('hidden');
+}
+async function publishPost(){
+  const text = document.getElementById('postText').value.trim();
+  const url = document.getElementById('postUrl').value.trim();
+  const file = document.getElementById('postImage').files[0];
+  if (!text) { showMsg('Teks thread wajib diisi.'); return; }
+  const btn = document.getElementById('publishBtn');
+  btn.disabled = true; btn.textContent = 'Menerbitkan...';
+  const fd = new FormData();
+  fd.append('text', text);
+  if (url) fd.append('url', url);
+  if (file) fd.append('image', file);
+  const r = await fetch('/api/posts', {method:'POST', body: fd});
+  let j = null; try { j = await r.json(); } catch(e){}
+  btn.disabled = false; btn.textContent = 'Posting';
+  if (j && j.ok) {
+    document.getElementById('postText').value='';
+    document.getElementById('postUrl').value='';
+    clearPostImage();
+    document.getElementById('postCount').textContent='0';
+    togglePublish();
+    toast('Thread diterbitkan');
+    showTab('feed'); loadFeed(true);
+  } else {
+    showMsg('<b>Gagal menerbitkan.</b><br>'+esc((j&&j.error)||'tidak diketahui'));
+  }
+}
+
+// ---------------- inbox ----------------
+async function loadInbox(){
+  const list = document.getElementById('inboxList');
+  list.innerHTML = '<div class="center">Memuat inbox...</div>';
+  const j = await api('/api/inbox');
+  if (!j || !j.ok) { list.innerHTML = '<div class="err" style="margin:12px 16px">'+esc((j&&j.error)||'gagal memuat inbox')+'</div>'; return; }
+  const items = j.items||[];
+  if (!items.length) { list.innerHTML = '<div class="center">Tidak ada komen/mention baru.</div>'; return; }
+  list.innerHTML = items.map(it=>{
+    const parent = it.parent||{};
+    return `<div class="post">
+      <div class="acol">${avatarHtml({username: it.author})}</div>
+      <div class="pbody">
+        <div class="parent"><div class="who">Dikomentari di post @${esc(parent.author||'?')}</div>
+        ${esc(parent.text||'(post tidak bisa dibaca)')}</div>
+        <div class="phead"><span class="username">${esc(it.author||'?')}</span><span class="time">${esc(it.timestamp||'')}</span></div>
+        <div class="ptext">${esc(it.text||'')}</div>
+        <div class="muted small">${it.handled?('Status: '+esc(it.handled)):'Belum ditangani'}</div>
+        <div class="actions">
+          <button class="act" onclick="toggleInboxReply('${it.id}')">Balas</button>
+          <button class="act" onclick="inboxLike('${it.id}','${esc(it.post_id)}','${esc(it.comment_id)}')">Suka</button>
+          <button class="act" onclick="inboxIgnore('${it.id}')">Abaikan</button>
+        </div>
+        <div class="replybox hidden" id="irb-${it.id}">
+          <textarea id="irt-${it.id}" maxlength="500" placeholder="Tulis balasan..."></textarea>
+          <div class="row" style="margin-top:8px"><button class="btn btn-sm" onclick="sendInboxReply('${it.id}','${esc(it.post_id)}','${esc(it.comment_id)}')">Kirim Balasan</button></div>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+function toggleInboxReply(id){ document.getElementById('irb-'+id).classList.toggle('hidden'); }
+async function sendInboxReply(id, postId, commentId){
+  const ta = document.getElementById('irt-'+id);
+  const text = ta.value.trim();
+  if (!text) return;
+  const j = await api('/api/inbox/'+encodeURIComponent(id)+'/reply', {method:'POST', body: JSON.stringify({text, post_id:postId, comment_id:commentId})});
+  if (j && j.ok) { toast('Balasan terkirim'); loadInbox(); } else showMsg(esc(j&&j.error||'gagal membalas'));
+}
+async function inboxLike(id, postId, commentId){
+  const j = await api('/api/inbox/'+encodeURIComponent(id)+'/like', {method:'POST', body: JSON.stringify({post_id:postId, comment_id:commentId})});
+  if (j && j.ok) { toast('Komen disukai'); loadInbox(); } else showMsg(esc(j&&j.error||'gagal like'));
+}
+async function inboxIgnore(id){
+  const j = await api('/api/inbox/'+encodeURIComponent(id)+'/ignore', {method:'POST', body: JSON.stringify({})});
+  if (j && j.ok) loadInbox(); else showMsg(esc(j&&j.error||'gagal mengabaikan'));
+}
+
+// ---------------- rules ----------------
+async function loadRules(){
+  const j = await api('/api/rules');
+  const box = document.getElementById('ruleList');
+  if (!j || !j.ok) { box.innerHTML = '<div class="err" style="margin:8px 0">'+esc((j&&j.error)||'gagal')+'</div>'; return; }
+  const rules = j.rules||[];
+  box.innerHTML = rules.length ? rules.map(r=>`
+    <div class="acct-row">
+      <div style="flex:1;min-width:0"><strong>${esc(r.keyword)}</strong> → ${esc(r.template)}<br>
+      <span class="muted small">maks ${r.max_per_day}/hari · ${r.enabled?'AKTIF':'MATI'}</span></div>
+      <div class="row">
+        <button class="btn secondary btn-sm" onclick="toggleRule('${r.id}')">${r.enabled?'Matikan':'Aktifkan'}</button>
+        <button class="btn danger btn-sm" onclick="deleteRule('${r.id}')">Hapus</button>
+      </div>
+    </div>`).join('') : '<div class="muted">Belum ada aturan.</div>';
+}
+async function addRule(){
+  const keyword = document.getElementById('ruleKeyword').value.trim();
+  const template = document.getElementById('ruleTemplate').value.trim();
+  const max = parseInt(document.getElementById('ruleMax').value||'20',10);
+  if (!keyword || !template) { showMsg('Keyword dan template wajib diisi.'); return; }
+  const j = await api('/api/rules', {method:'POST', body: JSON.stringify({keyword, template, max_per_day:max})});
+  if (j && j.ok) {
+    document.getElementById('ruleKeyword').value='';
+    document.getElementById('ruleTemplate').value='';
+    toast('Aturan ditambahkan'); loadRules();
+  } else showMsg(esc(j&&j.error||'gagal menambah aturan'));
+}
+async function toggleRule(id){
+  const j = await api('/api/rules/'+id+'/toggle', {method:'POST'});
+  if (j && j.ok) loadRules(); else showMsg(esc(j&&j.error||'gagal'));
+}
+async function deleteRule(id){
+  if (!confirm('Hapus aturan ini?')) return;
+  const j = await api('/api/rules/'+id, {method:'DELETE'});
+  if (j && j.ok) loadRules(); else showMsg(esc(j&&j.error||'gagal'));
+}
+
+// ---------------- history / settings ----------------
+async function loadHistory(){
+  const bar = document.getElementById('historyFilterBar');
+  if (bar) bar.innerHTML = historyFilter
+    ? `<div class="row" style="margin-top:8px"><span class="muted">Riwayat <b>@${esc(historyFilter.username)}</b></span><button class="btn secondary btn-sm" onclick="clearHistoryFilter()">Tampilkan semua</button></div>`
+    : '';
+  const j = await api('/api/history?limit=' + (historyFilter ? 200 : 100));
+  const box = document.getElementById('historyList');
+  if (!j || !j.ok) { box.innerHTML = '<div class="err" style="margin:8px 0">'+esc((j&&j.error)||'gagal')+'</div>'; return; }
+  let items = j.items||[];
+  if (historyFilter) items = items.filter(e=>e.account_id===historyFilter.id);
+  if (!items.length) { box.innerHTML = '<div class="muted">' + (historyFilter ? 'Belum ada riwayat untuk @'+esc(historyFilter.username)+'.' : 'Belum ada aksi.') + '</div>'; return; }
+  const label = {reply:'Balas', auto_comment:'Komen Affiliate', post:'Post', login:'Login', like:'Like', unlike:'Unlike', feed:'Feed', follow:'Ikuti', unfollow:'Berhenti Ikuti', repost:'Repost', delete:'Hapus', auto_reply:'Auto-Reply', token_refresh:'Refresh Token'};
+  box.innerHTML = '<div class="hist">' + items.map(e=>{
+    const ts = e.ts ? Math.floor(new Date(e.ts).getTime()/1000) : 0;
+    const when = ts ? timeAgo(ts) : '';
+    const ok = (e.result||'') === 'ok';
+    const type = label[e.type] || (e.type||'');
+    return `<div class="hist-item">
+      <div class="hist-top"><span class="badge">${esc(type)}</span><span class="who">@${esc(e.username||'')}</span><span class="when">${esc(when)}</span></div>
+      ${e.detail ? `<div class="hist-detail">${esc(e.detail)}</div>` : ''}
+      <div class="hist-foot"><span class="badge ${ok?'ok':'bad'}">${ok?'Berhasil':'Gagal'}</span>${e.link?`<a class="hist-link" href="${esc(e.link)}" target="_blank" rel="noopener">Lihat ↗</a>`:''}</div>
+    </div>`;
+  }).join('') + '</div>';
+}
+const refreshSourceLabel = {otomatis:'Otomatis (aplikasi)', extension:'Extension Chrome', manual:'Manual'};
+async function loadTokenRefreshes(){
+  const sumBox = document.getElementById('tokenRefreshSummary');
+  const box = document.getElementById('tokenRefreshList');
+  if (!sumBox || !box) return;
+  const j = await api('/api/token-refreshes');
+  if (!j || !j.ok) { box.innerHTML = '<div class="err" style="margin:8px 0">'+esc((j&&j.error)||'gagal')+'</div>'; return; }
+  const summary = j.summary || [];
+  sumBox.innerHTML = summary.length ? summary.map(s2=>{
+    const ts = s2.last_ts ? Math.floor(new Date(s2.last_ts).getTime()/1000) : 0;
+    return `<div class="hist-item"><div class="hist-top"><span class="who">@${esc(s2.username)}</span><span class="when">${ts?esc(timeAgo(ts)):''}</span></div><div class="hist-detail">Terakhir refresh via <b>${esc(refreshSourceLabel[s2.last_source]||s2.last_source||'-')}</b> — total ${s2.count} kali.</div></div>`;
+  }).join('') : '<div class="muted">Belum ada refresh token tercatat.</div>';
+  const items = j.items || [];
+  if (!items.length) { box.innerHTML = ''; return; }
+  box.innerHTML = '<div class="hist">' + items.map(e=>{
+    const ts = e.ts ? Math.floor(new Date(e.ts).getTime()/1000) : 0;
+    return `<div class="hist-item">
+      <div class="hist-top"><span class="badge">${esc(refreshSourceLabel[e.target]||e.target||'')}</span><span class="who">@${esc(e.username||'')}</span><span class="when">${ts?esc(timeAgo(ts)):''}</span></div>
+      ${e.detail ? `<div class="hist-detail">${esc(e.detail)}</div>` : ''}
+    </div>`;
+  }).join('') + '</div>';
+}
+async function loadSettings(){
+  const j = await api('/api/settings');
+  if (!j || !j.ok) return;
+  const s = j.settings;
+  document.getElementById('setAutoReply').checked = !!s.auto_reply_enabled;
+  document.getElementById('setMaxPosts').value = s.max_posts_per_day;
+  document.getElementById('setMaxReplies').value = s.max_replies_per_day;
+  document.getElementById('setMaxLikes').value = s.max_likes_per_day;
+  document.getElementById('setMinDelay').value = s.min_delay_seconds;
+}
+async function saveSettings(){
+  const body = {
+    auto_reply_enabled: document.getElementById('setAutoReply').checked,
+    max_posts_per_day: parseInt(document.getElementById('setMaxPosts').value||'20',10),
+    max_replies_per_day: parseInt(document.getElementById('setMaxReplies').value||'100',10),
+    max_likes_per_day: parseInt(document.getElementById('setMaxLikes').value||'100',10),
+    min_delay_seconds: parseInt(document.getElementById('setMinDelay').value||'20',10),
+  };
+  const j = await api('/api/settings', {method:'POST', body: JSON.stringify(body)});
+  if (j && j.ok) toast('Pengaturan disimpan'); else showMsg(esc(j&&j.error||'gagal menyimpan'));
+}
+
+// ---------------- tabs ----------------
+function showTab(name){
+  currentTab = name;
+  document.querySelectorAll('.navbtn[data-tab]').forEach(b=>b.classList.toggle('on', b.dataset.tab===name));
+  ['feed','search','post','inbox','rules','history','settings','accounts','profile'].forEach(t=>{
+    document.getElementById('tab-'+t).classList.toggle('hidden', t!==name);
+  });
+  showMsg('');
+  closeMenu();
+  if (name==='feed' && !document.getElementById('feedList').innerHTML) loadFeed(true);
+  if (name==='inbox') loadInbox();
+  if (name==='rules') loadRules();
+  if (name==='history') loadHistory();
+  if (name==='settings') loadSettings();
+  if (name==='accounts') { loadAccounts(); loadTokenRefreshes(); }
+}
+
+loadAccounts().then(()=>{ loadFeed(true); });
+</script>
+</body>
+</html>
