@@ -6,11 +6,27 @@ Security rules:
 - The master key is created once on first run and never leaves the server.
 """
 import base64
+import hashlib
+import hmac
 import json
 import os
 import secrets
 
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
+
+def derive_user_key(master_key: bytes, owner_id: str) -> bytes:
+    """Per-user encryption key derived from the master key (stdlib HMAC).
+
+    k_user = HMAC-SHA256(master_key, b"threads-user-key" + b"\\x00" + owner_id).
+    One compromised user key reveals nothing about other users' keys or
+    the master key (HMAC is one-way in the key).
+    """
+    return hmac.new(
+        master_key,
+        b"threads-user-key" + b"\x00" + owner_id.encode("utf-8"),
+        hashlib.sha256,
+    ).digest()
 
 
 def get_or_create_master_key(data_dir: str) -> bytes:
