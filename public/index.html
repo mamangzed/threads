@@ -325,6 +325,15 @@
 
     <!-- ===== accounts ===== -->
     <div id="tab-accounts" class="hidden">
+      <div class="panel" id="mePanel">
+        <h2>Akun Saya</h2>
+        <div id="meInfo" class="muted">Memuat...</div>
+        <div id="apiKeyBox" style="margin-top:12px"></div>
+        <div id="newKeyBox" class="hidden" style="margin-top:12px"></div>
+        <div class="row" style="margin-top:14px">
+          <button class="btn secondary" onclick="logout()">Keluar</button>
+        </div>
+      </div>
       <div class="panel">
         <h2>Tambah Akun</h2>
         <div class="muted">Login pakai akun Instagram (Threads nempel ke IG). Password hanya dipakai sekali saat login — yang disimpan hanya token sesi, terenkripsi. Kunci 2FA juga hanya dipakai sekali saat login ini, tidak disimpan. Proxy (kalau diisi) disimpan terenkripsi dan dipakai buat semua aktivitas akun ini — supaya trafiknya keluar lewat IP proxy, bukan IP server.</div>
@@ -520,7 +529,85 @@ async function api(path, opts){
   return j;
 }
 
-function logout(){ document.cookie = 'threads_session=; Path=/; Max-Age=0'; location.href='/'; }
+async function logout(){
+  try { await fetch('/api/auth/logout', {method:'POST'}); } catch(e) { /* sesi admin tidak punya endpoint ini — lanjut hapus cookie */ }
+  document.cookie = 'threads_session=; Path=/; Max-Age=0';
+  location.href='/';
+}
+
+/* ---------- akun saya (multi-user) ---------- */
+/* Pakai fetch mentah (bukan api()) supaya 401 di sini tidak me-redirect:
+   sesi admin (gate password) memang tidak punya /api/auth/me. */
+async function fetchJsonNoRedirect(path, opts){
+  const r = await fetch(path, Object.assign({headers:{'Content-Type':'application/json'}}, opts||{}));
+  let j = null;
+  try { j = await r.json(); } catch(e) { j = {ok:false, error:'respon server tidak bisa dibaca'}; }
+  return {status: r.status, ok: r.ok, j};
+}
+function limitsText(limits){
+  if (!limits) return '';
+  const parts = [];
+  if (limits.max_accounts != null) parts.push('maks ' + limits.max_accounts + ' akun Threads');
+  if (limits.max_posts_per_day != null) parts.push(limits.max_posts_per_day + ' post/hari');
+  if (limits.max_replies_per_day != null) parts.push(limits.max_replies_per_day + ' balasan/hari');
+  if (!parts.length) {
+    Object.keys(limits).forEach(k=>parts.push(k + ': ' + limits[k]));
+  }
+  return parts.length ? 'Batas: ' + parts.join(' · ') + '.' : '';
+}
+async function loadMe(){
+  const info = document.getElementById('meInfo');
+  const box = document.getElementById('apiKeyBox');
+  if (!info) return;
+  const {ok, j} = await fetchJsonNoRedirect('/api/auth/me');
+  if (!ok || !j || !j.ok || !j.user) {
+    info.innerHTML = 'Masuk sebagai <b>Admin</b> (password dashboard). Akun user &amp; API key tidak berlaku untuk sesi admin.';
+    if (box) box.innerHTML = '';
+    return;
+  }
+  const u = j.user;
+  info.innerHTML = '<b>' + esc(u.email || '') + '</b> ' + (u.is_admin ? '<span class="badge ok">Admin</span>' : '<span class="badge">Pengguna</span>') + '<br><span class="muted small">' + esc(limitsText(u.limits)) + '</span>';
+  loadApiKeyInfo();
+}
+async function loadApiKeyInfo(){
+  const box = document.getElementById('apiKeyBox');
+  if (!box) return;
+  const {ok, j} = await fetchJsonNoRedirect('/api/auth/api-key');
+  if (!ok || !j || !j.ok) {
+    box.innerHTML = '<div class="muted small">Info API key tidak bisa dimuat: ' + esc((j && j.error) || 'tidak diketahui') + '</div>';
+    return;
+  }
+  if (!j.api_key && !j.prefix) {
+    box.innerHTML = '<div class="muted">Belum ada API key. API key dipakai untuk mengelola akun Threads kamu lewat API (header <b>X-API-Key</b>).</div>'
+      + '<div style="margin-top:10px"><button class="btn btn-sm" onclick="regenApiKey(false)">Buat API Key</button></div>';
+    return;
+  }
+  const created = j.created_at ? ('Dibuat: ' + esc(j.created_at)) : '';
+  box.innerHTML = '<div class="muted">API key aktif: <b>' + esc(j.prefix || '') + '…</b> ' + (created ? '<br><span class="muted small">' + created + '</span>' : '')
+    + '</div><div style="margin-top:10px"><button class="btn secondary btn-sm" onclick="regenApiKey(true)">Buat Ulang API Key</button></div>'
+    + '<div class="muted small" style="margin-top:6px">Key lengkap hanya tampil sekali saat dibuat — simpan baik-baik.</div>';
+}
+async function regenApiKey(isRegen){
+  if (isRegen && !confirm('Buat ulang API key? Key lama langsung tidak berlaku.')) return;
+  const {ok, j} = await fetchJsonNoRedirect('/api/auth/api-key', {method:'POST'});
+  const nk = document.getElementById('newKeyBox');
+  if (!ok || !j || !j.ok || !j.api_key) {
+    if (nk) { nk.classList.remove('hidden'); nk.innerHTML = '<div class="err" style="margin:0">' + esc((j && j.error) || 'gagal membuat API key') + '</div>'; }
+    return;
+  }
+  if (nk) {
+    nk.classList.remove('hidden');
+    nk.innerHTML = '<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:12px;font-size:14px">'
+      + '<b>API key baru — hanya tampil sekali!</b><br><code id="shownApiKey" style="word-break:break-all;display:block;margin:8px 0">' + esc(j.api_key) + '</code>'
+      + '<button class="btn btn-sm" onclick="copyShownApiKey()">Salin API Key</button></div>';
+  }
+  loadApiKeyInfo();
+}
+async function copyShownApiKey(){
+  const t = document.getElementById('shownApiKey').textContent;
+  try { await navigator.clipboard.writeText(t); toast('API key disalin'); }
+  catch(e) { toast('Gagal menyalin — salin manual dari layar'); }
+}
 
 function statusBadge(a){
   if (a.status === 'ok') return '<span class="badge ok">OK</span>';
@@ -1230,10 +1317,10 @@ function showTab(name){
   if (name==='rules') loadRules();
   if (name==='history') loadHistory();
   if (name==='settings') loadSettings();
-  if (name==='accounts') { loadAccounts(); loadTokenRefreshes(); }
+  if (name==='accounts') { loadAccounts(); loadTokenRefreshes(); loadMe(); }
 }
 
-loadAccounts().then(()=>{ loadFeed(true); });
+loadAccounts().then(()=>{ loadFeed(true); loadMe(); });
 </script>
 </body>
 </html>

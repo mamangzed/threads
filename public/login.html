@@ -6,25 +6,143 @@
 <title>Threads App — Login</title>
 <style>
   body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; background: #f4f4f5; color: #18181b; }
-  .box { max-width: 360px; margin: 18vh auto 0; background: #fff; border: 1px solid #e4e4e7; border-radius: 12px; padding: 24px; }
+  .box { max-width: 360px; margin: 12vh auto 0; background: #fff; border: 1px solid #e4e4e7; border-radius: 12px; padding: 24px; }
   h1 { margin: 0 0 4px; font-size: 20px; }
   p { color: #71717a; font-size: 14px; margin: 0 0 16px; }
-  input { width: 100%; padding: 11px; border: 1px solid #d4d4d8; border-radius: 8px; font-size: 15px; box-sizing: border-box; }
-  button { width: 100%; margin-top: 12px; border: 0; border-radius: 8px; padding: 11px; font-size: 15px; cursor: pointer; background: #18181b; color: #fff; }
+  input { width: 100%; padding: 11px; border: 1px solid #d4d4d8; border-radius: 8px; font-size: 15px; box-sizing: border-box; margin-bottom: 10px; }
+  button { width: 100%; margin-top: 2px; border: 0; border-radius: 8px; padding: 11px; font-size: 15px; cursor: pointer; background: #18181b; color: #fff; }
+  button:disabled { opacity: .5; cursor: default; }
+  button.secondary { background: #f0f0f0; color: #18181b; margin-top: 8px; }
   .err { color: #991b1b; font-size: 14px; margin-top: 10px; min-height: 18px; }
+  .tabs { display: flex; gap: 4px; margin: 0 0 16px; background: #f4f4f5; border-radius: 8px; padding: 4px; }
+  .tabbtn { flex: 1; width: auto; margin: 0; padding: 8px 4px; font-size: 14px; font-weight: 600; background: transparent; color: #71717a; border-radius: 6px; }
+  .tabbtn.on { background: #fff; color: #18181b; box-shadow: 0 1px 3px rgba(0,0,0,.12); }
+  .hidden { display: none !important; }
+  .keybox { margin-top: 14px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 12px; font-size: 14px; }
+  .keybox p { color: #166534; margin-bottom: 8px; }
+  .keybox code { display: block; word-break: break-all; background: #fff; border: 1px solid #bbf7d0; border-radius: 6px; padding: 8px; font-size: 13px; margin-bottom: 8px; }
+  .ok { color: #166534; font-size: 14px; margin-top: 10px; min-height: 18px; }
 </style>
 </head>
 <body>
 <div class="box">
   <h1>Threads App</h1>
-  <p>Masukkan password dashboard untuk lanjut.</p>
-  <form onsubmit="doLogin(event)">
-    <input type="password" id="pw" placeholder="Password" autocomplete="current-password" autofocus>
-    <button type="submit" id="btn">Masuk</button>
-  </form>
-  <div class="err" id="err"></div>
+  <div class="tabs">
+    <button type="button" class="tabbtn on" id="tabLoginBtn" onclick="showPane('login')">Masuk</button>
+    <button type="button" class="tabbtn" id="tabSignupBtn" onclick="showPane('signup')">Daftar</button>
+    <button type="button" class="tabbtn" id="tabAdminBtn" onclick="showPane('admin')">Admin</button>
+  </div>
+
+  <div id="pane-login">
+    <p>Masuk dengan akun kamu (email + password).</p>
+    <form onsubmit="doUserLogin(event)">
+      <input type="email" id="loginEmail" placeholder="Email" autocomplete="email" autofocus required>
+      <input type="password" id="loginPass" placeholder="Password" autocomplete="current-password" required>
+      <button type="submit" id="loginBtn">Masuk</button>
+    </form>
+    <div class="err" id="loginErr"></div>
+  </div>
+
+  <div id="pane-signup" class="hidden">
+    <p>Buat akun baru — gratis. Batas awal: maks 3 akun Threads, 10 post/hari, 20 balasan/hari.</p>
+    <form onsubmit="doSignup(event)">
+      <input type="email" id="suEmail" placeholder="Email" autocomplete="email" required>
+      <input type="password" id="suPass" placeholder="Password (min. 8 karakter)" autocomplete="new-password" required>
+      <input type="password" id="suPass2" placeholder="Ulangi password" autocomplete="new-password" required>
+      <button type="submit" id="suBtn">Daftar</button>
+    </form>
+    <div class="err" id="suErr"></div>
+    <div id="suKeyBox" class="keybox hidden">
+      <p><b>API key kamu — hanya tampil sekali!</b><br>Simpan baik-baik. Key ini dipakai untuk mengelola akun Threads kamu lewat API.</p>
+      <code id="suKey"></code>
+      <button type="button" class="secondary" onclick="copyKey('suKey')">Salin API Key</button>
+      <button type="button" onclick="location.href='/'">Lanjut ke Dashboard</button>
+    </div>
+  </div>
+
+  <div id="pane-admin" class="hidden">
+    <p>Masukkan password dashboard untuk lanjut (khusus admin).</p>
+    <form onsubmit="doLogin(event)">
+      <input type="password" id="pw" placeholder="Password" autocomplete="current-password">
+      <button type="submit" id="btn">Masuk</button>
+    </form>
+    <div class="err" id="err"></div>
+  </div>
 </div>
 <script>
+function showPane(name){
+  ['login','signup','admin'].forEach(n=>{
+    document.getElementById('pane-'+n).classList.toggle('hidden', n!==name);
+    document.getElementById('tab'+n.charAt(0).toUpperCase()+n.slice(1)+'Btn').classList.toggle('on', n===name);
+  });
+}
+function errText(j, fallback){
+  if (j && j.error) return j.error;
+  if (j && j.ok === false) return fallback;
+  return fallback;
+}
+async function postJson(path, body){
+  const r = await fetch(path, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+  let j = null;
+  try { j = await r.json(); } catch(e) { j = {ok:false, error:'respon server tidak bisa dibaca'}; }
+  return {status: r.status, ok: r.ok, j};
+}
+async function doUserLogin(e){
+  e.preventDefault();
+  const email = document.getElementById('loginEmail').value.trim();
+  const pw = document.getElementById('loginPass').value;
+  const err = document.getElementById('loginErr');
+  const btn = document.getElementById('loginBtn');
+  if (!email || !pw) { err.textContent = 'Email dan password wajib diisi.'; return; }
+  btn.disabled = true; btn.textContent = 'Memeriksa...';
+  err.textContent = '';
+  const {ok, j} = await postJson('/api/auth/login', {email, password: pw});
+  if (ok) { location.href = '/'; return; }
+  err.textContent = errText(j, 'Email atau password salah.');
+  btn.disabled = false; btn.textContent = 'Masuk';
+}
+async function doSignup(e){
+  e.preventDefault();
+  const email = document.getElementById('suEmail').value.trim();
+  const pw = document.getElementById('suPass').value;
+  const pw2 = document.getElementById('suPass2').value;
+  const err = document.getElementById('suErr');
+  const btn = document.getElementById('suBtn');
+  if (!email || !pw || !pw2) { err.textContent = 'Semua kolom wajib diisi.'; return; }
+  if (pw.length < 8) { err.textContent = 'Password minimal 8 karakter.'; return; }
+  if (pw !== pw2) { err.textContent = 'Password dan ulangan password tidak sama.'; return; }
+  btn.disabled = true; btn.textContent = 'Mendaftar...';
+  err.textContent = '';
+  const {status, ok, j} = await postJson('/api/auth/signup', {email, password: pw});
+  if (ok && status === 201) {
+    // Signup bisa jadi belum memasang cookie sesi — login sekalian supaya
+    // tombol "Lanjut ke Dashboard" langsung masuk.
+    await postJson('/api/auth/login', {email, password: pw});
+    document.getElementById('suKey').textContent = (j && j.api_key) || '';
+    document.getElementById('suKeyBox').classList.toggle('hidden', !(j && j.api_key));
+    if (!(j && j.api_key)) {
+      err.textContent = '';
+      const okEl = document.createElement('div');
+      okEl.className = 'ok';
+      okEl.textContent = 'Akun berhasil dibuat. Silakan masuk.';
+      err.replaceWith(okEl);
+    }
+    btn.disabled = false; btn.textContent = 'Daftar';
+    return;
+  }
+  err.textContent = errText(j, 'Pendaftaran gagal. Coba lagi.');
+  btn.disabled = false; btn.textContent = 'Daftar';
+}
+async function copyKey(id){
+  const t = document.getElementById(id).textContent;
+  try { await navigator.clipboard.writeText(t); }
+  catch(e) {
+    const ta = document.createElement('textarea');
+    ta.value = t; document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); } catch(e2) {}
+    ta.remove();
+  }
+}
 async function doLogin(e){
   e.preventDefault();
   const pw = document.getElementById('pw').value;
